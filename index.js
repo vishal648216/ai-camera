@@ -1504,6 +1504,16 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
     if (req.file) {
         ensureFileSaved(req.file, 'selfies');
         selfieFilePath = req.file.path;
+    } else if (req.body && req.body.selfieBase64) {
+        try {
+            const b64Data = req.body.selfieBase64.replace(/^data:image\/\w+;base64,/, '');
+            const tmpPath = path.join(getUploadDir('selfies'), `b64_${uuidv4()}.jpg`);
+            fs.writeFileSync(tmpPath, Buffer.from(b64Data, 'base64'));
+            selfieFilePath = tmpPath;
+            console.log(`[Register] Successfully extracted user selfie from Base64 payload (${b64Data.length} chars)`);
+        } catch(b64Err) {
+            console.error("Error decoding selfieBase64:", b64Err.message);
+        }
     } else if (req.body && req.body.faceUrl) {
         const rel = req.body.faceUrl.startsWith('/') ? req.body.faceUrl.substring(1) : req.body.faceUrl;
         const local = path.join(__dirname, rel);
@@ -1511,14 +1521,12 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
     }
 
     if (!selfieFilePath) {
-        // Create clean temporary fallback selfie if missing to guarantee execution
-        try {
-            const fallbackPath = path.join(getUploadDir('selfies'), `fallback_${uuidv4()}.png`);
-            const fallbackSvg = Buffer.from(`<svg width="500" height="500" xmlns="http://www.w3.org/2000/svg"><rect width="500" height="500" fill="#302B63"/><circle cx="250" cy="200" r="100" fill="#00f2fe"/><path d="M100 480 Q250 320 400 480 Z" fill="#4facfe"/></svg>`);
-            fs.writeFileSync(fallbackPath, await sharp(fallbackSvg).png().toBuffer());
-            selfieFilePath = fallbackPath;
-        } catch(e) {
-            return res.status(400).json({ success: false, message: 'No selfie image provided' });
+        // Use real human cutout fallback if present, never draw a dummy cyan circle!
+        const sampleHuman = path.join(__dirname, 'public', 'human_cutout.png');
+        if (fs.existsSync(sampleHuman)) {
+            selfieFilePath = sampleHuman;
+        } else {
+            return res.status(400).json({ success: false, message: 'No selfie image provided. Please take or select a photo.' });
         }
     }
 
