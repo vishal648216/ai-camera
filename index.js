@@ -1230,15 +1230,17 @@ async function matchSubjectToneToBackdrop(cutoutBuf, backdropBuf) {
 async function autoEnhanceSubjectCutout(cutoutBuf) {
     try {
         console.log("[Studio-AI-Relighting] Applying Soft AI Relighting, Natural Face Tones & HD Portrait Clarity...");
-        let orientedBuf = await sharp(cutoutBuf).rotate().png().toBuffer();
+        // Trim any empty transparent margins so placement is exact to the subject's actual body/feet
+        let orientedBuf = await sharp(cutoutBuf).rotate().trim().png().toBuffer();
         
         let enhanced = await sharp(orientedBuf)
             .modulate({
-                brightness: 1.04, // Soft bright studio exposure
-                saturation: 1.08, // Rich natural human skin tones
+                brightness: 1.06, // Crisp, vibrant studio lighting
+                saturation: 1.12, // Rich natural human skin and clothing tones
                 hue: 0
             })
-            .sharpen({ sigma: 0.8 }) // High-definition portrait clarity
+            .linear(1.05, -3) // Micro-contrast boost to eliminate dull mobile camera wash
+            .sharpen({ sigma: 1.0, m1: 1.2, m2: 2.0 }) // High-definition portrait clarity
             .png({ quality: 100 })
             .toBuffer();
 
@@ -1421,7 +1423,12 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         left = Math.max(0, Math.min(left, mW - subW));
         top = Math.max(0, Math.min(top, mH - subH));
 
-        console.log(`[BackdropComposite] Calibrated Placement: anchor(${adminCX}, ${adminCY}, size=${adminSZ}) -> placed at left=${left}, top=${top}, ${subW}x${subH} on canvas ${mW}x${mH}`);
+        // When anchor is near the bottom (>= 88% of mH), lock bottom 100% flush against the template bottom edge (ZERO GAP!)
+        if (adminCY >= Math.round(mH * 0.88)) {
+            top = mH - subH;
+        }
+
+        console.log(`[BackdropComposite] Calibrated Placement: anchor(${adminCX}, ${adminCY}, size=${adminSZ}) -> placed at left=${left}, top=${top}, ${subW}x${subH} on canvas ${mW}x${mH} (bottom=${top+subH})`);
 
         // 3. Studio Rim-Light Backlight Aura (matching event spotlight)
         const glowW = Math.round(subW * 1.06);
