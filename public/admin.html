@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise AI Controller | Persona PRO</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #070719; --card: #11112b; --accent: #00f2fe; --purp: #4facfe; --green: #00ff88; --fail: #ff4757; }
+        * { box-sizing: border-box; }
+        body { background: var(--bg); color: #fff; font-family: 'Outfit', sans-serif; overflow-x: hidden; }
+        .sidebar { height: 100vh; background: var(--card); border-right: 1px solid rgba(255,255,255,0.05); position: fixed; width: 280px; z-index: 100; transition: 0.3s; }
+        .main-content { margin-left: 280px; padding: 40px; min-height: 100vh; background: radial-gradient(circle at 10% 20%, rgba(79,172,254,0.05) 0%, transparent 40%); }
+        .glass-card { background: var(--card); border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .nav-link { color: rgba(255,255,255,0.5); padding: 14px 24px; border-radius: 12px; margin: 4px 16px; transition: 0.3s; cursor: pointer; display: flex; align-items: center; text-decoration: none; border-left: 4px solid transparent; }
+        .nav-link:hover { background: rgba(255,255,255,0.03); color: var(--accent); }
+        .nav-link.active { background: rgba(79,172,254,0.1); color: var(--accent); border-left: 4px solid var(--accent); font-weight: 600; }
+        .stat-card { border-left: 5px solid var(--purp); }
+        .stat-val { font-size: 2.2rem; font-weight: 800; line-height: 1; margin: 10px 0; }
+        .table-dark { --bs-table-bg: transparent; }
+
+        /* Canvas / Preview Container */
+        .preview-container { position: relative; display: inline-block; background: #000; border-radius: 12px; border: 2px solid #333; overflow: visible; user-select: none; }
+        .preview-img { display: block; max-width: 100%; max-height: 500px; border-radius: 10px; pointer-events: none; }
+
+        /* Human Silhouette Marker */
+        .human-marker { position: absolute; cursor: move; touch-action: none; }
+        .human-marker svg { width: 100%; height: 100%; display: block; }
+        .human-marker .resize-handle {
+            position: absolute; width: 18px; height: 18px;
+            background: #fff; border: 2px solid var(--accent); border-radius: 50%;
+            bottom: -9px; right: -9px; cursor: nwse-resize; z-index: 10;
+            box-shadow: 0 0 8px rgba(0,242,254,0.8);
+        }
+        .human-marker .label-tag {
+            position: absolute; top: -24px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,242,254,0.15); border: 1px solid var(--accent);
+            color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: 1px;
+            padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+        }
+
+        /* DB status dot */
+        #dbStatusDot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:6px; background:#ffaa00; }
+        #dbStatusDot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        #dbStatusDot.error { background: var(--fail); }
+
+        /* Pulse animation for live */
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        .pulse { animation: pulse 1.5s infinite; }
+    </style>
+</head>
+<body>
+<div class="sidebar d-flex flex-column">
+    <div class="p-4 text-center border-bottom border-secondary border-opacity-10">
+        <h4 class="fw-bold mb-0"><i class="fas fa-robot text-info"></i> Persona<span class="text-info">PRO</span></h4>
+        <small class="text-secondary opacity-50">Enterprise Edition v3.0</small>
+    </div>
+    <div class="mt-4">
+        <div class="nav-link active" data-sec="dashboard"><i class="fas fa-chart-pie me-3"></i> Dashboard</div>
+        <div class="nav-link" data-sec="events"><i class="fas fa-calendar-check me-3"></i> Manage Events</div>
+        <div class="nav-link" data-sec="templates"><i class="fas fa-layer-group me-3"></i> Theme Builder</div>
+        <div class="nav-link" data-sec="leads"><i class="fas fa-id-card me-3"></i> Lead Database</div>
+        <div class="nav-link" data-sec="ai-engine"><i class="fas fa-microchip me-3"></i> AI Engine Control</div>
+    </div>
+    <div class="mt-auto p-4 border-top border-secondary border-opacity-10">
+        <div class="text-secondary small mb-2">
+            <span id="dbStatusDot"></span><span id="dbStatusText">Connecting...</span>
+        </div>
+        <div class="progress" style="height:4px;background:#222;"><div id="dbProgress" class="progress-bar bg-info" style="width:50%"></div></div>
+    </div>
+</div>
+
+<div class="main-content">
+    <!-- Dashboard -->
+    <section id="dashboard">
+        <div class="d-flex justify-content-between align-items-end mb-5">
+            <div><h1 class="fw-bold">Global Dashboard</h1><p class="text-secondary mb-0"><i class="fas fa-globe me-2"></i>Real-time Analytics</p></div>
+            <button class="btn btn-outline-info" onclick="refreshStats()"><i class="fas fa-sync-alt me-2"></i>Refresh</button>
+        </div>
+        <div class="row g-4 mb-5">
+            <div class="col-md-3"><div class="glass-card stat-card"><small class="text-secondary">TOTAL LEADS</small><div id="statTotalUsers" class="stat-val">--</div></div></div>
+            <div class="col-md-3"><div class="glass-card stat-card" style="border-left-color:var(--green)"><small class="text-secondary">TOTAL EVENTS</small><div id="statTotalEvents" class="stat-val">--</div></div></div>
+            <div class="col-md-3"><div class="glass-card stat-card" style="border-left-color:var(--accent)"><small class="text-secondary">EST. REVENUE</small><div class="stat-val">₹<span id="statRevenue">0</span></div></div></div>
+            <div class="col-md-3"><div class="glass-card stat-card" style="border-left-color:var(--purp)"><small class="text-secondary">POPULAR THEME</small><div id="topThemeName" class="h4 mt-2 mb-0">--</div></div></div>
+        </div>
+        <h5 class="mb-4">Live Lead Feed (Global)</h5>
+        <div class="glass-card p-0 overflow-hidden">
+            <table class="table table-dark table-hover mb-0">
+                <thead><tr class="text-secondary small"><th>User</th><th>Company</th><th>Theme</th><th>Time</th><th>Photo</th></tr></thead>
+                <tbody id="recentLeadsTable"><tr><td colspan="5" class="text-center text-secondary py-4">Loading...</td></tr></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Manage Events -->
+    <section id="events" class="d-none">
+        <div class="d-flex justify-content-between align-items-center mb-5">
+            <div><h1>Event Management</h1><p class="text-secondary">Manage automated events with temporal control & localized banners.</p></div>
+            <button class="btn btn-info px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#addEventModal"><i class="fas fa-plus me-2"></i>Create Event</button>
+        </div>
+        <div class="glass-card p-0 overflow-hidden">
+            <table class="table table-dark table-hover mb-0 align-middle">
+                <thead><tr class="text-secondary small"><th>Assets</th><th>Event Details</th><th>Timing</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="eventsTableBody"><tr><td colspan="5" class="text-center text-secondary py-4">Loading...</td></tr></tbody>
+            </table>
+        </div>
+        <div id="eventDetailPanel" class="d-none mt-5">
+            <div class="glass-card border-info border-3">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div><h4 class="mb-0 text-info" id="detailEventName">Event Leads</h4></div>
+                    <div>
+                        <button class="btn btn-warning fw-bold text-dark me-2" id="btnInvoice"><i class="fas fa-file-invoice-dollar me-2"></i>Generate Invoice</button>
+                        <button class="btn btn-outline-light border-0" onclick="document.getElementById('eventDetailPanel').classList.add('d-none')"><i class="fas fa-times fa-lg"></i></button>
+                    </div>
+                </div>
+                <div class="overflow-hidden rounded">
+                    <table class="table table-dark table-hover mb-0">
+                        <thead><tr class="text-secondary small"><th>User</th><th>Email</th><th>Phone</th><th>Company</th><th>Time</th><th>Photo</th></tr></thead>
+                        <tbody id="eventLeadsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Theme Builder -->
+    <section id="templates" class="d-none">
+        <div class="d-flex justify-content-between align-items-center mb-5">
+            <div><h1>Theme Builder</h1><p class="text-secondary">Upload templates & calibrate human placement zone visually.</p></div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-danger px-4 fw-bold" onclick="deleteAllTemplates()"><i class="fas fa-trash-alt me-2"></i>Clear All Templates</button>
+                <button class="btn btn-info px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#uploadModal"><i class="fas fa-plus me-2"></i>Upload Template</button>
+            </div>
+        </div>
+        <div id="templateGrid" class="row g-4"><div class="col-12 text-center text-secondary py-4">Loading templates...</div></div>
+    </section>
+
+    <!-- Lead Database -->
+    <section id="leads" class="d-none">
+        <div class="d-flex justify-content-between align-items-center mb-5">
+            <h1>Global Lead Database</h1>
+            <button onclick="exportLeadsCSV()" class="btn btn-outline-success px-4 fw-bold"><i class="fas fa-file-export me-2"></i>Export CSV</button>
+        </div>
+        <div class="glass-card p-0 overflow-hidden">
+            <table class="table table-dark table-hover mb-0"><tbody id="allLeadsTable"><tr><td class="text-center text-secondary py-4">Loading leads...</td></tr></tbody></table>
+        </div>
+    </section>
+
+    <!-- AI Engine -->
+    <section id="ai-engine" class="d-none">
+        <div class="mb-5"><h1>AI Config & Architecture</h1></div>
+        <div class="glass-card mb-4 border-info">
+            <h5 class="text-info mb-3"><i class="fas fa-bolt me-2"></i>MAGIC HOUR FACE SWAP DIAGNOSTIC</h5>
+            <div class="row g-3">
+                <div class="col-md-3"><small class="text-secondary">API KEY STATUS</small><div id="mhKeyStatus" class="fw-bold fs-5 text-warning">Checking...</div></div>
+                <div class="col-md-3"><small class="text-secondary">CONNECTION HEALTH</small><div id="mhConnHealth" class="fw-bold fs-5 text-warning">Checking...</div></div>
+                <div class="col-md-3"><small class="text-secondary">CREDITS STATUS</small><div id="mhCreditsStatus" class="fw-bold fs-5 text-success">Checking...</div></div>
+                <div class="col-md-3"><small class="text-secondary">LAST DIAGNOSTIC</small><div id="mhLastCheck" class="small text-secondary mt-1">--</div></div>
+            </div>
+        </div>
+        <div class="glass-card">
+            <form id="aiEngineSettingsForm">
+                <div class="row mb-4">
+                    <div class="col-md-6"><label class="small text-secondary mb-2">VISION ENGINE PROVIDER</label><select id="aiProvider" class="form-select bg-dark border-0 text-white p-3"><option value="magic_hour">Magic Hour Face Swap Photo API (Primary)</option></select></div>
+                    <div class="col-md-6"><label class="small text-secondary mb-2">PRIMARY MODEL</label><input type="text" id="aiModel" class="form-control bg-dark border-0 text-white p-3" value="Magic Hour Photo Face Swap"></div>
+                </div>
+                <div class="row mb-4"><div class="col-12"><label class="small text-secondary mb-2">OPENROUTER API KEY (OPTIONAL)</label><input type="password" id="openRouterKey" class="form-control bg-dark border-0 text-white p-3"></div></div>
+                <button type="submit" class="btn btn-info w-100 p-3 fw-bold">UPDATE CLOUD ARCHITECTURE</button>
+            </form>
+        </div>
+    </section>
+</div>
+
+<!-- Add/Edit Event Modal -->
+<div class="modal fade" id="addEventModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content glass-card p-0" style="background:#11112b">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="addEventModalTitle">Create Automated Event</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addEventForm">
+                <div class="modal-body p-4 pt-0">
+                    <div class="row g-4">
+                        <div class="col-md-5">
+                            <h6 class="text-info my-2">Event Profile</h6>
+                            <div class="mb-2"><label class="small mb-1">Event Name</label><input type="text" id="evName" class="form-control bg-dark border-0 text-white" required></div>
+                            <div class="mb-2"><label class="small mb-1">Location</label><input type="text" id="evLocation" class="form-control bg-dark border-0 text-white" required></div>
+                            <div class="mb-2"><label class="small mb-1">Client/Owner Name</label><input type="text" id="evOwner" class="form-control bg-dark border-0 text-white" required></div>
+                            <div class="mb-3"><label class="small mb-1">Contact Number</label><input type="text" id="evPhone" class="form-control bg-dark border-0 text-white" required></div>
+                            <h6 class="text-info my-2 mt-4">Temporal Rules (Auto Status)</h6>
+                            <div class="row g-2 mb-2">
+                                <div class="col-6"><label class="small mb-1 text-secondary">Start Date</label><input type="date" id="evStartDate" class="form-control bg-dark border-0 text-white" required></div>
+                                <div class="col-6"><label class="small mb-1 text-secondary">End Date</label><input type="date" id="evEndDate" class="form-control bg-dark border-0 text-white" required></div>
+                            </div>
+                            <div class="row g-2 mb-2">
+                                <div class="col-6"><label class="small mb-1 text-secondary">Start Time</label><input type="time" id="evStartTime" class="form-control bg-dark border-0 text-white" required></div>
+                                <div class="col-6"><label class="small mb-1 text-secondary">End Time</label><input type="time" id="evEndTime" class="form-control bg-dark border-0 text-white" required></div>
+                            </div>
+                            <div class="mb-4"><label class="small mb-1 text-secondary">Break Time (e.g. 13:00-14:00)</label><input type="text" id="evBreakTime" class="form-control bg-dark border-0 text-white"></div>
+                        </div>
+                        <div class="col-md-7">
+                            <h6 class="text-info my-2">Branding Assets</h6>
+                            <div class="mb-3"><label class="small mb-1">Watermark Logo (Optional)</label><input type="file" id="evLogo" class="form-control bg-dark border-0 text-white" accept="image/*"></div>
+                            <div class="form-check mb-3"><input class="form-check-input" type="checkbox" id="evWatermark" checked><label class="form-check-label small">Add Logo Watermark</label></div>
+
+                            <h6 class="text-info my-2">Event Banner + Human Position Setup</h6>
+                            <p class="small text-secondary mb-2">Upload banner → Drag & resize the <b class="text-info">real human photo cutout</b> to where the person should stand.</p>
+                            <div class="mb-3"><label class="small mb-1">Upload Banner Image</label><input type="file" id="evBannerFile" class="form-control bg-dark border-0 text-white" accept="image/*" onchange="handleBannerFile(this)"></div>
+
+                            <div class="text-center bg-black bg-opacity-25 rounded-3 p-3 mb-3" style="min-height:220px;display:flex;align-items:center;justify-content:center;">
+                                <div id="ev-preview-container" class="preview-container d-none mx-auto">
+                                    <img id="ev-preview-img" class="preview-img" alt="Event Banner">
+                                    <div id="ev-human-marker" class="human-marker">
+                                        <div class="label-tag">👤 PERSON ZONE</div>
+                                        <svg viewBox="0 0 100 200" style="height:100%;width:auto;display:block;filter:drop-shadow(0 0 6px #00f2fe);" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="50" cy="22" rx="16" ry="18" fill="rgba(0,242,254,0.4)" stroke="#00f2fe" stroke-width="2.5"/>
+    <path d="M 32 40 C 32 38, 68 38, 68 40 L 72 110 L 28 110 Z" fill="rgba(0,242,254,0.35)" stroke="#00f2fe" stroke-width="2.5"/>
+    <path d="M 32 40 L 14 90 M 68 40 L 86 90" stroke="#00f2fe" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 38 110 L 32 188 M 62 110 L 68 188" stroke="#00f2fe" stroke-width="4" stroke-linecap="round"/>
+</svg>
+                                        <div class="resize-handle"></div>
+                                    </div>
+                                </div>
+                                <p id="ev-canvas-hint" class="text-secondary small mb-0"><i class="fas fa-arrow-up me-1"></i>Upload a banner to set person position</p>
+                            </div>
+                            <button type="submit" class="btn btn-info w-100 p-3 fw-bold">LAUNCH EVENT</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Theme Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content glass-card p-0" style="background:#11112b">
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="uploadModalTitle">Upload Template & Calibrate Person Zone</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="templateForm">
+                <div class="modal-body p-4 pt-0">
+                    <div class="row g-4">
+                        <div class="col-md-4">
+                            <div class="mb-3"><label class="small mb-1">Theme Name</label><input type="text" id="tmplName" class="form-control bg-dark border-0 text-white" required></div>
+                            <div class="mb-3">
+                                <label class="small mb-1">Composition Mode</label>
+                                <select id="tmplMode" class="form-select bg-dark border-0 text-white">
+                                    <option value="backdrop">Full-Body Backdrop Composite</option>
+                                    <option value="face_swap">Character Face Swap</option>
+                                </select>
+                            </div>
+                            <div class="mb-3"><label class="small mb-1">Template Image</label><input type="file" id="tmplFile" class="form-control bg-dark border-0 text-white" accept="image/*" onchange="handleTemplateFile(this)"></div>
+                            <div class="alert alert-info p-2 small mt-3">
+                                <i class="fas fa-info-circle me-1"></i>
+                                <b>How to calibrate:</b><br>
+                                1. Upload template image<br>
+                                2. Drag the <b>human silhouette</b> to the exact position where users should appear<br>
+                                3. Resize it to match the expected person height<br>
+                                4. Publish — all user photos will be placed there!
+                            </div>
+                            <button type="submit" id="uploadBtn" class="btn btn-info w-100 p-3 mt-3 fw-bold">PUBLISH THEME</button>
+                        </div>
+                        <div class="col-md-8 text-center bg-black bg-opacity-25 rounded-4 p-4" style="min-height:420px;display:flex;align-items:center;justify-content:center;">
+                            <div id="tmpl-canvas-hint" class="text-center">
+                                <i class="fas fa-image fa-3x text-secondary mb-3 d-block"></i>
+                                <p class="text-secondary small">Upload a template image to start calibration</p>
+                            </div>
+                            <div id="tmpl-preview-container" class="preview-container d-none mx-auto">
+                                <img id="tmpl-preview-img" class="preview-img" alt="Template">
+                                <div id="tmpl-human-marker" class="human-marker">
+                                    <div class="label-tag">👤 DRAG HERE</div>
+                                    <svg viewBox="0 0 100 200" style="height:100%;width:auto;display:block;filter:drop-shadow(0 0 6px #00f2fe);" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="50" cy="22" rx="16" ry="18" fill="rgba(0,242,254,0.4)" stroke="#00f2fe" stroke-width="2.5"/>
+    <path d="M 32 40 C 32 38, 68 38, 68 40 L 72 110 L 28 110 Z" fill="rgba(0,242,254,0.35)" stroke="#00f2fe" stroke-width="2.5"/>
+    <path d="M 32 40 L 14 90 M 68 40 L 86 90" stroke="#00f2fe" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 38 110 L 32 188 M 62 110 L 68 188" stroke="#00f2fe" stroke-width="4" stroke-linecap="round"/>
+</svg>
+                                    <div class="resize-handle"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Invoice Modal -->
+<div class="modal fade" id="invoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content text-dark" style="background:#fff;border-radius:10px;">
+            <div class="modal-header"><h5 class="modal-title fw-bold">TAX INVOICE</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body p-5" id="invoicePrintArea">
+                <div class="d-flex justify-content-between mb-5">
+                    <div><h2 class="fw-bold text-primary">PersonaPRO AI</h2><p class="mb-0">info@personapro.ai</p></div>
+                    <div class="text-end"><h5 class="fw-bold" id="invEventName">Event Name</h5><p class="mb-0 text-muted">Client: <span id="invClient"></span></p><p class="mb-0 text-muted">Date: <span id="invDate"></span></p></div>
+                </div>
+                <table class="table table-bordered text-dark mt-4">
+                    <thead class="bg-light"><tr><th>Description</th><th class="text-center">Rate</th><th class="text-center">Total Leads</th><th class="text-end">Total Amount</th></tr></thead>
+                    <tbody><tr><td>AI Photo Generation Services & Lead Collection</td><td class="text-center">₹<span id="invRate"></span>/gen</td><td class="text-center"><b id="invCount"></b></td><td class="text-end fw-bold">₹<span id="invTotal"></span></td></tr></tbody>
+                    <tfoot>
+                        <tr><th colspan="3" class="text-end">Subtotal:</th><th class="text-end">₹<span id="invSub"></span></th></tr>
+                        <tr><th colspan="3" class="text-end">Platform Fee (0%):</th><th class="text-end">₹0.00</th></tr>
+                        <tr class="table-primary"><th colspan="3" class="text-end fs-5">Grand Total:</th><th class="text-end fs-5">₹<span id="invGrand"></span></th></tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-primary" onclick="window.print()"><i class="fas fa-print me-2"></i>Print Invoice</button></div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const API = window.location.origin;
+
+// ===== DB STATUS CHECK =====
+async function checkDbStatus() {
+    try {
+        const res = await fetch(`${API}/api/admin/stats`);
+        const data = await res.json();
+        const dot = document.getElementById('dbStatusDot');
+        const txt = document.getElementById('dbStatusText');
+        const pg = document.getElementById('dbProgress');
+        if (data && typeof data.totalUsers === 'number') {
+            dot.className = 'connected';
+            txt.innerText = 'DB Connected ✓';
+            pg.style.width = '100%';
+            pg.className = 'progress-bar bg-success';
+        }
+    } catch(e) {
+        const dot = document.getElementById('dbStatusDot');
+        dot.className = 'error';
+        document.getElementById('dbStatusText').innerText = 'DB Error';
+    }
+}
+
+// ===== ROUTING =====
+document.querySelectorAll('.nav-link').forEach(link => {
+    link.onclick = function() {
+        const target = this.dataset.sec;
+        document.querySelectorAll('section').forEach(s => s.classList.add('d-none'));
+        document.getElementById(target).classList.remove('d-none');
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        this.classList.add('active');
+        if (target === 'dashboard') refreshStats();
+        if (target === 'events') fetchEvents();
+        if (target === 'templates') fetchTemplates();
+        if (target === 'leads') fetchLeads();
+        if (target === 'ai-engine') loadAIConfig();
+    };
+});
+
+// ===== DASHBOARD =====
+async function refreshStats() {
+    try {
+        const res = await fetch(`${API}/api/admin/stats`);
+        const data = await res.json();
+        document.getElementById('statTotalUsers').innerText = data.totalUsers ?? 0;
+        document.getElementById('statTotalEvents').innerText = data.eventsCount ?? 0;
+        document.getElementById('statRevenue').innerText = data.totalRevenue ?? '0.00';
+        const topTheme = Object.entries(data.popularThemes || {}).sort((a,b)=>b[1]-a[1])[0];
+        document.getElementById('topThemeName').innerText = topTheme ? topTheme[0] : 'None';
+        const regs = data.registrations || [];
+        if (regs.length === 0) {
+            document.getElementById('recentLeadsTable').innerHTML = '<tr><td colspan="5" class="text-center text-secondary py-4">No registrations yet. Users will appear here after registering.</td></tr>';
+        } else {
+            document.getElementById('recentLeadsTable').innerHTML = regs.map(r => `<tr>
+                <td><div class="d-flex align-items-center gap-2">${r.selfieUrl?`<img src="${r.selfieUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:50%;border:1px solid #4f1cfe">`:'<div style="width:36px;height:36px;background:#222;border-radius:50%;display:flex;align-items:center;justify-content:center"><i class="fas fa-user text-secondary"></i></div>'}<b>${r.name||'--'}</b></div></td>
+                <td>${r.company||'Self'}</td>
+                <td><span class="badge bg-info text-dark">${r.usedProvider||'AI Engine'}</span></td>
+                <td>${r.timestamp?new Date(r.timestamp).toLocaleString():'--'}</td>
+                <td><div class="d-flex align-items-center gap-2">${r.resultUrl?`<img src="${r.resultUrl}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="window.open('${r.resultUrl}','_blank')"><a href="${r.resultUrl}" target="_blank" class="btn btn-sm btn-outline-info">View</a>`:'<span class="text-secondary small">Processing...</span>'}</div></td>
+            </tr>`).join('');
+        }
+    } catch(e) {
+        console.error('Stats error:', e);
+        document.getElementById('recentLeadsTable').innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">Error loading data. Check server connection.</td></tr>';
+    }
+}
+
+// ===== EVENTS =====
+let currentEditEventId = null;
+
+async function fetchEvents() {
+    try {
+        const res = await fetch(`${API}/api/admin/events`);
+        const events = await res.json();
+        if (!events.length) {
+            document.getElementById('eventsTableBody').innerHTML = '<tr><td colspan="5" class="text-center text-secondary py-4">No events created yet. Click "Create Event" to add one.</td></tr>';
+            return;
+        }
+        document.getElementById('eventsTableBody').innerHTML = events.map(e => {
+            let statusBadge = e.liveState==='active'
+                ? '<span class="badge bg-success pulse">🟢 Active Live</span>'
+                : e.liveState==='closed'
+                ? '<span class="badge bg-danger">Closed</span>'
+                : '<span class="badge bg-warning text-dark">⏸ Deactivated</span>';
+            const bannerThumb = e.bannerUrl
+                ? `<img src="${e.bannerUrl}" style="width:50px;height:35px;object-fit:cover;border-radius:4px;border:1px solid #444;cursor:pointer" onclick="showBannerPreview('${e.bannerUrl}','${e.name}')" title="Click to preview">`
+                : '<span class="text-secondary small">No Banner</span>';
+            const safeE = encodeURIComponent(JSON.stringify(e));
+            return `<tr>
+                <td><div class="d-flex align-items-center gap-2">
+                    ${e.logoUrl?`<img src="${e.logoUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:5px">`:'<div style="width:36px;height:36px;background:#222;border-radius:5px;display:flex;align-items:center;justify-content:center"><i class="fas fa-image text-secondary"></i></div>'}
+                    ${bannerThumb}
+                </div></td>
+                <td><b class="text-white">${e.name||'--'}</b><br><small class="text-secondary"><i class="fas fa-map-marker-alt"></i> ${e.location||'--'}</small></td>
+                <td><i class="fas fa-calendar"></i> ${e.startDate||'--'} to ${e.endDate||'--'}<br><i class="fas fa-clock"></i> ${e.startTime||'--'} - ${e.endTime||'--'}</td>
+                <td>
+                    <div class="mb-1">${statusBadge}</div>
+                    <select onchange="updateEventStatus('${e.id}', this.value)" class="form-select form-select-sm bg-dark text-white border-secondary">
+                        <option value="active" ${e.status==='active'?'selected':''}>Set Active</option>
+                        <option value="deactive" ${e.status==='deactive'?'selected':''}>Set Deactive</option>
+                        <option value="closed" ${e.status==='closed'?'selected':''}>Set Closed</option>
+                    </select>
+                </td>
+                <td>
+                    <div class="d-flex gap-1 flex-wrap">
+                        <button onclick="editEventById('${e.id}')" class="btn btn-sm btn-outline-warning"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteEvent('${e.id}')" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                        <button onclick="viewEventLeads('${e.id}','${e.name.replace(/'/g,"&#39;")}')" class="btn btn-sm btn-outline-info"><i class="fas fa-users"></i></button>
+                        <button onclick="generateInvoice('${e.id}')" class="btn btn-sm btn-primary"><i class="fas fa-receipt"></i></button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch(err) {
+        document.getElementById('eventsTableBody').innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">Error loading events.</td></tr>';
+    }
+}
+
+let _allEvents = [];
+async function editEventById(id) {
+    if (!_allEvents.length) {
+        const res = await fetch(`${API}/api/admin/events`);
+        _allEvents = await res.json();
+    }
+    const e = _allEvents.find(x => x.id === id);
+    if (!e) return alert('Event not found');
+    currentEditEventId = e.id;
+    document.getElementById('addEventModalTitle').innerText = 'Update Event: ' + e.name;
+    document.getElementById('evName').value = e.name || '';
+    document.getElementById('evLocation').value = e.location || '';
+    document.getElementById('evOwner').value = e.ownerName || '';
+    document.getElementById('evPhone').value = e.ownerNumber || '';
+    document.getElementById('evStartDate').value = e.startDate || '';
+    document.getElementById('evEndDate').value = e.endDate || '';
+    document.getElementById('evStartTime').value = e.startTime || '';
+    document.getElementById('evEndTime').value = e.endTime || '';
+    document.getElementById('evBreakTime').value = e.breakTime || '';
+    document.getElementById('evWatermark').checked = !!e.watermarkEnabled;
+    if (e.bannerUrl) {
+        const img = document.getElementById('ev-preview-img');
+        img.src = e.bannerUrl;
+        document.getElementById('ev-preview-container').classList.remove('d-none');
+        document.getElementById('ev-canvas-hint').style.display = 'none';
+        img.onload = () => {
+            const naturalW = e.imgW || img.naturalWidth || 1080;
+            const naturalH = e.imgH || img.naturalHeight || 1080;
+            const scaleX = img.clientWidth / naturalW;
+            const scaleY = img.clientHeight / naturalH;
+            const circleX = e.bannerCircleX || e.circleX || (naturalW / 2);
+            const circleY = e.bannerCircleY || e.circleY || (naturalH * 0.4);
+            const circleSize = e.bannerCircleSize || e.circleSize || (naturalH * 0.3);
+            const personHeight_modal = circleSize * scaleY;
+            evState.pxSize = Math.max(30, Math.round(personHeight_modal / 2));
+            const centerX_modal = circleX * scaleX;
+            const centerY_modal = circleY * scaleY;
+            evState.pxX = Math.round(centerX_modal - (evState.pxSize / 2));
+            evState.pxY = Math.round(centerY_modal - evState.pxSize);
+            updateMarker(evState, evMarker);
+        };
+    }
+    new bootstrap.Modal(document.getElementById('addEventModal')).show();
+}
+
+async function deleteEvent(id) {
+    if (confirm('Are you sure you want to delete this event? This cannot be undone.')) {
+        await fetch(`${API}/api/admin/events/${id}`, { method: 'DELETE' });
+        fetchEvents();
+    }
+}
+
+document.getElementById('addEventModal').addEventListener('hidden.bs.modal', () => {
+    currentEditEventId = null;
+    _allEvents = [];
+    document.getElementById('addEventForm').reset();
+    document.getElementById('addEventModalTitle').innerText = 'Create Automated Event';
+    document.getElementById('ev-preview-container').classList.add('d-none');
+    document.getElementById('ev-canvas-hint').style.display = '';
+});
+
+document.getElementById('addEventForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.append('name', document.getElementById('evName').value);
+    fd.append('location', document.getElementById('evLocation').value);
+    fd.append('ownerName', document.getElementById('evOwner').value);
+    fd.append('ownerNumber', document.getElementById('evPhone').value);
+    fd.append('startDate', document.getElementById('evStartDate').value);
+    fd.append('endDate', document.getElementById('evEndDate').value);
+    fd.append('startTime', document.getElementById('evStartTime').value);
+    fd.append('endTime', document.getElementById('evEndTime').value);
+    fd.append('breakTime', document.getElementById('evBreakTime').value);
+    fd.append('watermarkEnabled', document.getElementById('evWatermark').checked);
+    if (document.getElementById('evLogo').files[0]) fd.append('logo', document.getElementById('evLogo').files[0]);
+    if (document.getElementById('evBannerFile').files[0]) fd.append('banner', document.getElementById('evBannerFile').files[0]);
+
+    const img = document.getElementById('ev-preview-img');
+    if (img.naturalWidth > 0) {
+        const naturalW = img.naturalWidth;
+        const naturalH = img.naturalHeight;
+        const scaleX = naturalW / img.clientWidth;
+        const scaleY = naturalH / img.clientHeight;
+        const centerX_px = evState.pxX + evState.pxSize / 2;
+        const centerY_px = evState.pxY + evState.pxSize;
+        const personHeight_px = evState.pxSize * 2;
+        const cx = Math.round(centerX_px * scaleX);
+        const cy = Math.round(centerY_px * scaleY);
+        const sz = Math.round(personHeight_px * scaleY);
+        fd.append('circleX', cx);
+        fd.append('circleY', cy);
+        fd.append('circleSize', sz);
+        fd.append('imgW', naturalW);
+        fd.append('imgH', naturalH);
+        fd.append('maskShape', 'circle');
+    }
+
+    const url = currentEditEventId ? `${API}/api/admin/events/${currentEditEventId}` : `${API}/api/admin/events`;
+    const method = currentEditEventId ? 'PUT' : 'POST';
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true; submitBtn.innerText = 'Saving...';
+    try {
+        await fetch(url, { method, body: fd });
+        bootstrap.Modal.getInstance(document.getElementById('addEventModal')).hide();
+        fetchEvents();
+    } catch(err) { alert('Error saving event: ' + err.message); }
+    finally { submitBtn.disabled = false; submitBtn.innerText = 'LAUNCH EVENT'; }
+};
+
+async function updateEventStatus(id, status) {
+    await fetch(`${API}/api/admin/events/${id}/status`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({status}) });
+    fetchEvents();
+}
+async function viewEventLeads(id, name) {
+    document.getElementById('eventDetailPanel').classList.remove('d-none');
+    document.getElementById('detailEventName').innerText = `Leads: ${name}`;
+    const res = await fetch(`${API}/api/admin/leads?eventId=${id}`);
+    const leads = await res.json();
+    document.getElementById('eventLeadsBody').innerHTML = leads.length ? leads.map(r => `<tr>
+        <td><b>${r.name||'--'}</b></td>
+        <td>${r.email||'--'}</td>
+        <td>${r.phone||'--'}</td>
+        <td>${r.company||'--'}</td>
+        <td>${r.timestamp?new Date(r.timestamp).toLocaleString():'--'}</td>
+        <td><div class="d-flex align-items-center gap-2">
+            ${r.resultUrl?`<img src="${r.resultUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:4px;cursor:pointer" onclick="window.open('${r.resultUrl}','_blank')"><a href="${r.resultUrl}" target="_blank" class="btn btn-sm btn-outline-info">View</a>`:'Processing...'}
+        </div></td>
+    </tr>`).join('') : '<tr><td colspan="6" class="text-center text-secondary py-3">No leads for this event yet.</td></tr>';
+    document.getElementById('btnInvoice').onclick = () => generateInvoice(id);
+    document.getElementById('eventDetailPanel').scrollIntoView({ behavior: 'smooth' });
+}
+async function generateInvoice(id) {
+    const res = await fetch(`${API}/api/admin/events/${id}/invoice`);
+    const inv = await res.json();
+    if (!inv.event) return alert('Invoice data not found');
+    document.getElementById('invEventName').innerText = inv.event.name;
+    document.getElementById('invClient').innerText = inv.event.ownerName;
+    document.getElementById('invDate').innerText = new Date(inv.invoiceDate).toLocaleDateString();
+    document.getElementById('invRate').innerText = inv.costPerGeneration;
+    document.getElementById('invCount').innerText = inv.totalGenerations;
+    document.getElementById('invTotal').innerText = inv.totalAmount;
+    document.getElementById('invSub').innerText = inv.totalAmount;
+    document.getElementById('invGrand').innerText = inv.totalAmount;
+    new bootstrap.Modal(document.getElementById('invoiceModal')).show();
+}
+
+// ===== TEMPLATES =====
+async function fetchTemplates() {
+    try {
+        const res = await fetch(`${API}/api/admin/templates`);
+        const temps = await res.json();
+        _allTemplates = temps;
+        if (!temps.length) {
+            document.getElementById('templateGrid').innerHTML = '<div class="col-12 text-center text-secondary py-4">No templates found. Click "Upload Template" to add one.</div>';
+            return;
+        }
+        document.getElementById('templateGrid').innerHTML = temps.map(t => {
+            const imgW = t.imgW || 1080;
+            const imgH = t.imgH || 1080;
+            const circleX = t.circleX || (imgW / 2);
+            const circleY = t.circleY || (imgH * 0.4);
+            const circleSize = t.circleSize || (imgH * 0.3);
+
+            const posX = ((circleX / imgW) * 100).toFixed(2);
+            const posY = ((circleY / imgH) * 100).toFixed(2);
+            const pHeight = ((circleSize / imgH) * 100).toFixed(2);
+
+            const displayImg = (t.imageData && t.imageData.startsWith('data:image')) ? t.imageData : (t.imageUrl || '/uploads/templates/default.png');
+
+            return `
+        <div class="col-md-3" id="tmpl-card-${t.id}">
+            <div class="glass-card p-0 overflow-hidden h-100">
+                <div class="position-relative bg-black" style="height:210px;overflow:hidden;">
+                    <img src="${displayImg}" class="w-100 h-100" style="object-fit:cover" onerror="if(this.src!=='${t.imageData}') this.src='${t.imageData||'/uploads/templates/default.png'}';">
+                    <div style="position:absolute; left:${posX}%; top:${posY}%; height:${pHeight}%; transform:translate(-50%, -50%); pointer-events:none; z-index:2;">
+                        <svg viewBox="0 0 100 200" style="height:100%;width:auto;display:block;filter:drop-shadow(0 0 6px #00f2fe);" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="50" cy="22" rx="16" ry="18" fill="rgba(0,242,254,0.4)" stroke="#00f2fe" stroke-width="2.5"/>
+    <path d="M 32 40 C 32 38, 68 38, 68 40 L 72 110 L 28 110 Z" fill="rgba(0,242,254,0.35)" stroke="#00f2fe" stroke-width="2.5"/>
+    <path d="M 32 40 L 14 90 M 68 40 L 86 90" stroke="#00f2fe" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 38 110 L 32 188 M 62 110 L 68 188" stroke="#00f2fe" stroke-width="4" stroke-linecap="round"/>
+</svg>
+                    </div>
+                    <span class="badge position-absolute top-0 end-0 m-2 ${t.mode==='backdrop'?'bg-primary':'bg-warning text-dark'}" style="z-index:3">${t.mode==='backdrop'?'Full Body':'Face Swap'}</span>
+                    <span class="badge position-absolute top-0 start-0 m-2 ${t.isActive?'bg-success':'bg-secondary'}" style="z-index:3">${t.isActive?'Active':'Hidden'}</span>
+                    <span class="badge position-absolute bottom-0 start-0 m-2 bg-dark bg-opacity-75 text-info border border-info border-opacity-25" style="font-size:10px;z-index:3"><i class="fas fa-street-view me-1"></i>Calibrated</span>
+                </div>
+                <div class="p-3">
+                    <b>${t.name}</b>
+                    <br><small class="text-secondary opacity-75 d-block mb-2" style="font-size:11px">${t.desc||''}</small>
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <button onclick="toggleTemplate('${t.id}')" class="btn btn-sm ${t.isActive?'btn-success':'btn-outline-secondary'} flex-grow-1" id="toggle-${t.id}">
+                            ${t.isActive?'✓ Active':'○ Hidden'}
+                        </button>
+                        <button onclick="editTemplateById('${t.id}')" class="btn btn-sm btn-outline-warning"><i class="fas fa-edit"></i></button>
+                        <button onclick="deleteTemplate('${t.id}')" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+        }).join('');
+    } catch(err) {
+        document.getElementById('templateGrid').innerHTML = '<div class="col-12 text-center text-danger py-4">Error loading templates.</div>';
+    }
+}
+
+let currentEditTemplateId = null;
+let _allTemplates = [];
+
+async function editTemplateById(id) {
+    try {
+        const res = await fetch(`${API}/api/admin/templates`);
+        _allTemplates = await res.json();
+    } catch(e) {}
+    const t = _allTemplates.find(x => x.id === id);
+    if (!t) return alert('Template not found');
+    currentEditTemplateId = t.id;
+    document.getElementById('uploadModalTitle').innerText = 'Update Template: ' + (t.name || '');
+    document.getElementById('tmplName').value = t.name || '';
+    document.getElementById('tmplMode').value = t.mode || 'backdrop';
+    
+    const displayImg = (t.imageData && t.imageData.startsWith('data:image')) ? t.imageData : t.imageUrl;
+    if (displayImg) {
+        const img = document.getElementById('tmpl-preview-img');
+        img.src = displayImg;
+        document.getElementById('tmpl-preview-container').classList.remove('d-none');
+        document.getElementById('tmpl-canvas-hint').style.display = 'none';
+        img.onload = () => {
+            const naturalW = t.imgW || img.naturalWidth || 1080;
+            const naturalH = t.imgH || img.naturalHeight || 1080;
+            const scaleX = img.clientWidth / naturalW;
+            const scaleY = img.clientHeight / naturalH;
+            
+            const circleX = t.circleX || (naturalW / 2);
+            const circleY = t.circleY || (naturalH * 0.4);
+            const circleSize = t.circleSize || (naturalH * 0.3);
+
+            const personHeight_modal = circleSize * scaleY;
+            tmplState.pxSize = Math.max(30, Math.round(personHeight_modal / 2));
+            
+            const centerX_modal = circleX * scaleX;
+            const centerY_modal = circleY * scaleY;
+
+            tmplState.pxX = Math.round(centerX_modal - (tmplState.pxSize / 2));
+            tmplState.pxY = Math.round(centerY_modal - tmplState.pxSize);
+
+            updateMarker(tmplState, tmplMarker);
+        };
+    }
+    new bootstrap.Modal(document.getElementById('uploadModal')).show();
+}
+
+async function toggleTemplate(id) {
+    const btn = document.getElementById(`toggle-${id}`);
+    if (btn) { btn.disabled = true; btn.innerText = 'Updating...'; }
+    try {
+        const res = await fetch(`${API}/api/admin/templates/${id}`, { method: 'PATCH' });
+        const t = await res.json();
+        fetchTemplates(); // Refresh grid
+    } catch(e) {
+        alert('Error toggling template');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+async function deleteTemplate(id) {
+    if (confirm('Are you sure you want to delete this template? This cannot be undone.')) {
+        await fetch(`${API}/api/admin/templates/${id}`, { method: 'DELETE' });
+        fetchTemplates();
+    }
+}
+async function deleteAllTemplates() {
+    if (confirm('Are you sure you want to delete ALL templates from MongoDB Atlas? This will clear all templates.')) {
+        await fetch(`${API}/api/admin/templates-all`, { method: 'DELETE' });
+        fetchTemplates();
+    }
+}
+
+document.getElementById('templateForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('tmplFile').files[0];
+    if (!currentEditTemplateId && !file) {
+        return alert('Please select a template image file.');
+    }
+
+    const img = document.getElementById('tmpl-preview-img');
+    const naturalW = img.naturalWidth || 1080;
+    const naturalH = img.naturalHeight || 1080;
+    const scaleX = naturalW / img.clientWidth;
+    const scaleY = naturalH / img.clientHeight;
+
+    const centerX_px = tmplState.pxX + tmplState.pxSize / 2;
+    const centerY_px = tmplState.pxY + tmplState.pxSize;
+    const personHeight_px = tmplState.pxSize * 2;
+
+    const circleX = Math.round(centerX_px * scaleX);
+    const circleY = Math.round(centerY_px * scaleY);
+    const circleSize = Math.round(personHeight_px * scaleY);
+
+    const fd = new FormData();
+    fd.append('name', document.getElementById('tmplName').value);
+    fd.append('mode', document.getElementById('tmplMode').value);
+    if (file) fd.append('template', file);
+    fd.append('maskShape', 'circle');
+    fd.append('imgW', naturalW);
+    fd.append('imgH', naturalH);
+    fd.append('circleX', circleX);
+    fd.append('circleY', circleY);
+    fd.append('circleSize', circleSize);
+    
+    const btn = document.getElementById('uploadBtn');
+    btn.disabled = true; btn.innerText = 'Saving...';
+    const url = currentEditTemplateId ? `${API}/api/admin/templates/${currentEditTemplateId}` : `${API}/api/admin/templates`;
+    const method = currentEditTemplateId ? 'PUT' : 'POST';
+    try {
+        const res = await fetch(url, { method, body: fd });
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `Server error ${res.status}`);
+        }
+        const modalEl = document.getElementById('uploadModal');
+        const modalInst = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modalInst.hide();
+        fetchTemplates();
+    } catch(err) { 
+        alert('Error saving template: ' + err.message); 
+    } finally { 
+        btn.disabled = false; btn.innerText = 'PUBLISH THEME'; 
+    }
+};
+
+document.getElementById('uploadModal').addEventListener('hidden.bs.modal', () => {
+    currentEditTemplateId = null;
+    _allTemplates = [];
+    document.getElementById('templateForm').reset();
+    document.getElementById('uploadModalTitle').innerText = 'Upload Template & Calibrate Person Zone';
+    document.getElementById('tmpl-preview-container').classList.add('d-none');
+    document.getElementById('tmpl-canvas-hint').style.display = '';
+});
+
+// ===== LEADS =====
+async function fetchLeads() {
+    try {
+        const res = await fetch(`${API}/api/admin/leads`);
+        const leads = await res.json();
+        if (!leads.length) {
+            document.getElementById('allLeadsTable').innerHTML = '<tr><td class="text-center text-secondary py-4">No leads recorded yet. Users will appear here after registering.</td></tr>';
+            return;
+        }
+        document.getElementById('allLeadsTable').innerHTML = `<thead><tr class="text-secondary small">
+            <th>Selfie</th><th>User</th><th>Email</th><th>Phone</th><th>Company</th><th>Time</th><th>AI Photo</th><th>Action</th>
+        </tr></thead>` + leads.map(r => `<tr>
+            <td>${r.selfieUrl?`<img src="${r.selfieUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:50%;border:1px solid #4facfe;cursor:pointer" onclick="window.open('${r.selfieUrl}','_blank')">`:'--'}</td>
+            <td><b>${r.name||'--'}</b></td>
+            <td>${r.email||'--'}</td>
+            <td>${r.phone||'--'}</td>
+            <td>${r.company||'--'}</td>
+            <td>${r.timestamp?new Date(r.timestamp).toLocaleString():'--'}</td>
+            <td>${r.resultUrl?`<img src="${r.resultUrl}" style="width:42px;height:42px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="window.open('${r.resultUrl}','_blank')">`:'<span class="text-secondary small">Processing</span>'}</td>
+            <td>
+                ${r.resultUrl?`<a href="${r.resultUrl}" target="_blank" class="btn btn-sm btn-outline-info me-1"><i class="fas fa-external-link-alt"></i></a>`:''}
+                <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-success"><i class="fas fa-qrcode"></i></a>
+            </td>
+        </tr>`).join('');
+    } catch(e) {
+        document.getElementById('allLeadsTable').innerHTML = '<tr><td class="text-center text-danger py-4">Error loading leads.</td></tr>';
+    }
+}
+
+async function exportLeadsCSV() {
+    try {
+        const res = await fetch(`${API}/api/admin/leads`);
+        const leads = await res.json();
+        if (!leads.length) return alert('No leads to export!');
+        const headers = "Name,Email,Phone,Company,Gender,Provider,Timestamp,ResultUrl\n";
+        const rows = leads.map(l => `"${l.name}","${l.email}","${l.phone}","${l.company||''}","${l.gender||'N/A'}","${l.usedProvider||''}","${l.timestamp}","${API}${l.resultUrl}"`).join("\n");
+        const blob = new Blob([headers + rows], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `leads_export_${Date.now()}.csv`;
+        a.click(); window.URL.revokeObjectURL(url);
+    } catch(e) { alert('Export failed: ' + e.message); }
+}
+
+// ===== AI ENGINE =====
+async function loadAIConfig() {
+    try {
+        const res = await fetch(`${API}/api/admin/settings`);
+        const data = await res.json();
+        document.getElementById('aiModel').value = data.aiModel || 'Magic Hour Photo Face Swap';
+        document.getElementById('openRouterKey').value = data.openRouterKey || '';
+        const mhRes = await fetch(`${API}/api/admin/magic-hour-status`);
+        const mh = await mhRes.json();
+        document.getElementById('mhKeyStatus').innerText = mh.configured ? `✓ Configured (${mh.keyMasked})` : '✗ Not Configured';
+        document.getElementById('mhKeyStatus').className = `fw-bold fs-5 ${mh.configured?'text-success':'text-danger'}`;
+        document.getElementById('mhConnHealth').innerText = mh.connection;
+        document.getElementById('mhCreditsStatus').innerText = mh.creditsStatus;
+        document.getElementById('mhLastCheck').innerText = new Date(mh.lastRequest).toLocaleTimeString();
+    } catch(e) {}
+}
+document.getElementById('aiEngineSettingsForm').onsubmit = async (e) => {
+    e.preventDefault();
+    await fetch(`${API}/api/admin/settings`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ aiProvider: document.getElementById('aiProvider').value, aiModel: document.getElementById('aiModel').value, openRouterKey: document.getElementById('openRouterKey').value }) });
+    alert('Settings updated!');
+};
+
+// ===== HUMAN SILHOUETTE DRAG & RESIZE (Universal) =====
+function makeDraggable(stateObj, markerEl, handleEl, containerEl) {
+    let dragging = false, resizing = false, startX, startY, startPxX, startPxY, startSize;
+
+    markerEl.addEventListener('mousedown', (e) => {
+        if (e.target === handleEl || handleEl.contains(e.target)) return;
+        dragging = true;
+        startX = e.clientX; startY = e.clientY;
+        startPxX = stateObj.pxX; startPxY = stateObj.pxY;
+        e.preventDefault();
+    });
+    handleEl.addEventListener('mousedown', (e) => {
+        resizing = true;
+        startX = e.clientX;
+        startSize = stateObj.pxSize;
+        e.stopPropagation(); e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (dragging) {
+            const rect = containerEl.getBoundingClientRect();
+            stateObj.pxX = Math.max(0, Math.min(rect.width - stateObj.pxSize, startPxX + (e.clientX - startX)));
+            stateObj.pxY = Math.max(0, Math.min(rect.height - stateObj.pxSize, startPxY + (e.clientY - startY)));
+            updateMarker(stateObj, markerEl);
+        }
+        if (resizing) {
+            stateObj.pxSize = Math.max(50, Math.min(400, startSize + (e.clientX - startX)));
+            updateMarker(stateObj, markerEl);
+        }
+    });
+    document.addEventListener('mouseup', () => { dragging = false; resizing = false; });
+
+    // Touch support
+    markerEl.addEventListener('touchstart', (e) => {
+        if (e.target === handleEl || handleEl.contains(e.target)) return;
+        dragging = true;
+        startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+        startPxX = stateObj.pxX; startPxY = stateObj.pxY;
+        e.preventDefault();
+    }, {passive: false});
+    handleEl.addEventListener('touchstart', (e) => {
+        resizing = true; startX = e.touches[0].clientX; startSize = stateObj.pxSize;
+        e.stopPropagation(); e.preventDefault();
+    }, {passive: false});
+    document.addEventListener('touchmove', (e) => {
+        const t = e.touches[0];
+        if (dragging) {
+            const rect = containerEl.getBoundingClientRect();
+            stateObj.pxX = Math.max(0, Math.min(rect.width - stateObj.pxSize, startPxX + (t.clientX - startX)));
+            stateObj.pxY = Math.max(0, Math.min(rect.height - stateObj.pxSize, startPxY + (t.clientY - startY)));
+            updateMarker(stateObj, markerEl);
+        }
+        if (resizing) {
+            stateObj.pxSize = Math.max(50, Math.min(400, startSize + (t.clientX - startX)));
+            updateMarker(stateObj, markerEl);
+        }
+    }, {passive: false});
+    document.addEventListener('touchend', () => { dragging = false; resizing = false; });
+}
+
+function updateMarker(state, markerEl) {
+    markerEl.style.left = state.pxX + 'px';
+    markerEl.style.top = state.pxY + 'px';
+    markerEl.style.width = state.pxSize + 'px';
+    markerEl.style.height = (state.pxSize * 2) + 'px';
+}
+
+// Template Modal
+let tmplState = { pxX: 80, pxY: 60, pxSize: 100 };
+const tmplMarker = document.getElementById('tmpl-human-marker');
+const tmplContainer = document.getElementById('tmpl-preview-container');
+makeDraggable(tmplState, tmplMarker, tmplMarker.querySelector('.resize-handle'), tmplContainer);
+
+function handleTemplateFile(input) {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const img = document.getElementById('tmpl-preview-img');
+        img.src = e.target.result;
+        document.getElementById('tmpl-canvas-hint').style.display = 'none';
+        document.getElementById('tmpl-preview-container').classList.remove('d-none');
+        img.onload = () => {
+            tmplState.pxX = Math.round(img.clientWidth * 0.35);
+            tmplState.pxY = Math.round(img.clientHeight * 0.05);
+            tmplState.pxSize = Math.round(img.clientHeight * 0.3);
+            updateMarker(tmplState, tmplMarker);
+        };
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+
+// Event Modal
+let evState = { pxX: 80, pxY: 60, pxSize: 100 };
+const evMarker = document.getElementById('ev-human-marker');
+const evContainer = document.getElementById('ev-preview-container');
+makeDraggable(evState, evMarker, evMarker.querySelector('.resize-handle'), evContainer);
+updateMarker(evState, evMarker);
+
+function handleBannerFile(input) {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const img = document.getElementById('ev-preview-img');
+        img.src = e.target.result;
+        document.getElementById('ev-canvas-hint').style.display = 'none';
+        document.getElementById('ev-preview-container').classList.remove('d-none');
+        img.onload = () => {
+            evState.pxX = Math.round(img.clientWidth * 0.35);
+            evState.pxY = Math.round(img.clientHeight * 0.05);
+            evState.pxSize = Math.round(img.clientHeight * 0.3);
+            updateMarker(evState, evMarker);
+        };
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+
+// Update marker sizes on modal show
+document.getElementById('uploadModal').addEventListener('shown.bs.modal', () => {
+    updateMarker(tmplState, tmplMarker);
+});
+document.getElementById('addEventModal').addEventListener('shown.bs.modal', () => {
+    updateMarker(evState, evMarker);
+});
+
+// ===== INIT =====
+checkDbStatus();
+refreshStats();
+</script>
+</body>
+</html>

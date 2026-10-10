@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "env": {
+    "APP_PUBLIC_URL": "https://ai-photo-booth-backend.vercel.app",
+    "MONGODB_URI": "mongodb+srv://aipersona:aipersona@cluster0.g4wl0mi.mongodb.net/aipersona?retryWrites=true&w=majority&appName=Cluster0",
+    "GEMINI_API_KEY": "AIzaSyADEyKUsr1yoEUJhxsAGNXE4WU0p-cAypk",
+    "MAGIC_HOUR_API_KEY": "cm1234567890magichourkey"
+  },
+  "builds": [
+    {
+      "src": "index.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "uploads/templates/**",
+          "template_config.json",
+          "public/**",
+          "providers/**"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "index.js"
+    }
+  ]
+}

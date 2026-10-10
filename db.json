@@ -1,0 +1,70 @@
+{
+  "registrations": [],
+  "templates": [
+    {
+      "id": "07f1a2be-3fbc-48c9-a7f9-2331531c296e",
+      "name": "gallery.php",
+      "imageUrl": "/uploads/templates/2260cf38-9da1-439b-849d-057153368168.jpg",
+      "circleX": 584,
+      "circleY": 402,
+      "circleSize": 203,
+      "maskShape": "circle",
+      "isActive": false,
+      "createdAt": "2026-03-05T03:51:23.648Z"
+    },
+    {
+      "id": "5a7814e2-d4c2-4187-8656-c4b684c06863",
+      "name": "mumbai event",
+      "imageUrl": "/uploads/templates/4f87ed12-8d30-4210-bd84-6626f51da66d.jpg",
+      "circleX": 644,
+      "circleY": 459,
+      "circleSize": 632,
+      "maskShape": "square",
+      "isActive": false,
+      "createdAt": "2026-03-22T04:10:57.491Z"
+    }
+  ],
+  "analytics": {
+    "totalGens": 0,
+    "lastEventName": "Default Event"
+  },
+  "subscriptions": [
+    {
+      "id": "1",
+      "name": "Starter Expo",
+      "price": "₹49,000",
+      "limit": 1000,
+      "active": true
+    },
+    {
+      "id": "2",
+      "name": "Pro Event",
+      "price": "₹1,50,000",
+      "limit": 5000,
+      "active": false
+    },
+    {
+      "id": "3",
+      "name": "Enterprise Expo",
+      "price": "₹5,00,000",
+      "limit": "Unlimited",
+      "active": true
+    }
+  ],
+  "settings": {
+    "aiProvider": "openrouter",
+    "aiModel": "google/gemini-2.0-flash-exp:free",
+    "openRouterKey": "",
+    "aiPrompt": "Analyze this selfie. In 15 words, describe the person's expression and dominant futuristic traits you would AI enhance (like cyber-eyes or neon hair). Format: [Trait1], [Trait2], [Description]",
+    "aiGenerationPrompt": "Futuristic portrait of {name}, {personaDescription}. 8k, realistic, cinematic lighting.",
+    "primaryProvider": "internal",
+    "backupProvider": "pollination",
+    "failoverEnabled": true
+  },
+  "eventConfig": {
+    "name": "Futuristic AI Expo 2026",
+    "location": "Mumbai EXHIBITION Center",
+    "watermarkEnabled": "true",
+    "logoUrl": "/uploads/templates/2bf75ddb-6fb8-450a-921c-f374acb76fb4.jpg"
+  }
+}
