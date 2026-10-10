@@ -1072,19 +1072,15 @@ async function performBackgroundRemoval(inputPath) {
         try {
             console.log("[BackgroundRemoval] Using @imgly/background-removal-node for real AI background removal...");
             const { removeBackground } = require('@imgly/background-removal-node');
-            const imgBuf = fs.readFileSync(inputPath);
             
-            // Convert buffer to Blob (imgly expects Blob or URL)
-            const { Blob } = require('buffer');
-            const inputBlob = new Blob([imgBuf], { type: 'image/png' });
-            
-            const outputBlob = await removeBackground(inputBlob, {
+            // Pass file path directly — this is the correct API for @imgly/background-removal-node
+            const outputBlob = await removeBackground(inputPath, {
                 model: 'medium',
                 output: { format: 'image/png', quality: 1.0 },
                 progress: () => {}
             });
             
-            // Convert Blob back to Buffer
+            // Convert Blob to Buffer
             const arrayBuffer = await outputBlob.arrayBuffer();
             cutoutBuffer = Buffer.from(arrayBuffer);
             console.log(`[BackgroundRemoval] @imgly AI background removal SUCCESS (${cutoutBuffer.length} bytes)!`);
@@ -1093,72 +1089,12 @@ async function performBackgroundRemoval(inputPath) {
         }
     }
 
-    // PRIORITY 3: Sharp luma-key fallback (last resort only)
+    // PRIORITY 3: Safe plain fallback — use original image as-is (no destructive edits)
     if (!cutoutBuffer) {
-        console.log("[BackgroundRemoval] Using Sharp luma-key fallback...");
+        console.log("[BackgroundRemoval] Using safe plain fallback (original selfie, no bg removal)");
         try {
-            const imgBuf = fs.readFileSync(inputPath);
-            const meta = await sharp(imgBuf).metadata();
-            const w = meta.width || 800;
-            const h = meta.height || 1000;
-
-            // Convert to RGBA, use threshold-based alpha mask on light/white backgrounds
-            const rawPixels = await sharp(imgBuf)
-                .ensureAlpha()
-                .raw()
-                .toBuffer({ resolveWithObject: true });
-
-            const { data, info: rawInfo } = rawPixels;
-            const channels = rawInfo.channels; // 4 (RGBA)
-            const totalPixels = rawInfo.width * rawInfo.height;
-
-            // Detect background color from corners (sample 5x5 corner regions)
-            const cornerSamples = [];
-            const sampleSize = 5;
-            for (let sy = 0; sy < sampleSize && sy < rawInfo.height; sy++) {
-                for (let sx = 0; sx < sampleSize && sx < rawInfo.width; sx++) {
-                    const idx = (sy * rawInfo.width + sx) * channels;
-                    cornerSamples.push({ r: data[idx], g: data[idx+1], b: data[idx+2] });
-                }
-            }
-            // Top-right corner
-            for (let sy = 0; sy < sampleSize && sy < rawInfo.height; sy++) {
-                for (let sx = rawInfo.width - sampleSize; sx < rawInfo.width; sx++) {
-                    const idx = (sy * rawInfo.width + sx) * channels;
-                    cornerSamples.push({ r: data[idx], g: data[idx+1], b: data[idx+2] });
-                }
-            }
-
-            // Average background color
-            const avgR = cornerSamples.reduce((s, c) => s + c.r, 0) / cornerSamples.length;
-            const avgG = cornerSamples.reduce((s, c) => s + c.g, 0) / cornerSamples.length;
-            const avgB = cornerSamples.reduce((s, c) => s + c.b, 0) / cornerSamples.length;
-            console.log(`[Sharp-Fallback] Detected bg color: R=${avgR.toFixed(0)} G=${avgG.toFixed(0)} B=${avgB.toFixed(0)}`);
-
-            // Apply color-distance based alpha mask
-            const threshold = 50; // pixels within 50 color distance of bg color get removed
-            const outputData = Buffer.from(data);
-            for (let i = 0; i < totalPixels; i++) {
-                const idx = i * channels;
-                const dr = data[idx] - avgR;
-                const dg = data[idx+1] - avgG;
-                const db = data[idx+2] - avgB;
-                const dist = Math.sqrt(dr*dr + dg*dg + db*db);
-                if (dist < threshold) {
-                    outputData[idx + 3] = 0; // Make transparent
-                } else if (dist < threshold + 30) {
-                    // Soft edge anti-aliasing
-                    outputData[idx + 3] = Math.round(((dist - threshold) / 30) * 255);
-                }
-            }
-
-            cutoutBuffer = await sharp(outputData, {
-                raw: { width: rawInfo.width, height: rawInfo.height, channels }
-            }).png({ quality: 100 }).toBuffer();
-
-            console.log(`[Sharp-Fallback] Color-distance background removal done (${cutoutBuffer.length} bytes)`);
-        } catch(cropErr) {
-            console.warn("[Sharp-Fallback] Error:", cropErr.message);
+            cutoutBuffer = await sharp(fs.readFileSync(inputPath)).ensureAlpha().png().toBuffer();
+        } catch(fallErr) {
             cutoutBuffer = fs.readFileSync(inputPath);
         }
     }

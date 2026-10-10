@@ -12,6 +12,7 @@
       "src": "index.js",
       "use": "@vercel/node",
       "config": {
+        "maxDuration": 60,
         "includeFiles": [
           "uploads/templates/**",
           "template_config.json",
