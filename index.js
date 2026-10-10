@@ -1056,7 +1056,7 @@ async function performBackgroundRemoval(inputPath) {
             const pyScript = path.join(__dirname, 'remove_bg.py');
             const tmpOut = path.join(getUploadDir('selfies'), `py_cutout_${uuidv4()}.png`);
             await new Promise((resolve, reject) => {
-                exec(`python "${pyScript}" "${inputPath}" "${tmpOut}"`, { timeout: 8000 }, (error) => {
+                exec(`python "${pyScript}" "${inputPath}" "${tmpOut}"`, { timeout: 35000 }, (error) => {
                     if (!error && fs.existsSync(tmpOut) && fs.statSync(tmpOut).size > 1000) return resolve();
                     reject(error || new Error("Python rembg failed"));
                 });
