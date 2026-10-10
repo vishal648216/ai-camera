@@ -1048,7 +1048,12 @@ try {
 
 async function performBackgroundRemoval(inputPath) {
     try {
-        let orientedSelfieBuf = await sharp(inputPath).rotate().png().toBuffer();
+        // Fast downscale huge mobile camera selfies to max 1024px immediately
+        let orientedSelfieBuf = await sharp(inputPath)
+            .rotate()
+            .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+            .png()
+            .toBuffer();
         
         // AI Auto-Relighting & Exposure Correction for Dim/Dark Selfies
         try {
@@ -1084,13 +1089,13 @@ async function performBackgroundRemoval(inputPath) {
 
     let cutoutBuffer = null;
 
-    // PRIORITY 1: Python rembg (local Windows only, best quality)
+    // PRIORITY 1: Python rembg with fast u2netp (local Windows only, 2-3s execution!)
     if (process.platform === 'win32' && !process.env.VERCEL) {
         try {
             const pyScript = path.join(__dirname, 'remove_bg.py');
             const tmpOut = path.join(getUploadDir('selfies'), `py_cutout_${uuidv4()}.png`);
             await new Promise((resolve, reject) => {
-                exec(`python "${pyScript}" "${inputPath}" "${tmpOut}"`, { timeout: 35000 }, (error) => {
+                exec(`python "${pyScript}" "${inputPath}" "${tmpOut}"`, { timeout: 12000 }, (error) => {
                     if (!error && fs.existsSync(tmpOut) && fs.statSync(tmpOut).size > 1000) return resolve();
                     reject(error || new Error("Python rembg failed"));
                 });
@@ -1109,40 +1114,46 @@ async function performBackgroundRemoval(inputPath) {
             console.log("[BackgroundRemoval] Calling HuggingFace BRIA-RMBG-2.0 via Gradio...");
             const { Client } = require('@gradio/client');
             
-            // Resize huge selfies down to max 1280px for fast cloud transmission & inference
+            // Resize selfies down to max 1024px for fast cloud transmission & inference
             let sendBuf = fs.readFileSync(inputPath);
             try {
                 sendBuf = await sharp(sendBuf)
-                    .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+                    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
                     .png({ quality: 90 })
                     .toBuffer();
             } catch(reErr) {}
 
             const blob = new Blob([sendBuf], { type: 'image/png' });
             
-            // 25s timeout protection so Vercel function never hangs
+            // 20s timeout protection so serverless function never hangs
             const gradioCall = (async () => {
                 const client = await Client.connect('briaai/BRIA-RMBG-2.0');
                 return await client.predict('/image', { image: blob });
             })();
             const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("HuggingFace Gradio timeout after 25s")), 25000)
+                setTimeout(() => reject(new Error("HuggingFace Gradio timeout after 20s")), 20000)
             );
             
             const result = await Promise.race([gradioCall, timeoutPromise]);
             
-            // Extract transparent cutout image URL from gradio response
+            // Extract transparent cutout image URL from gradio response (index 1 is no_bg_image.png)
             let imageUrl = null;
-            if (Array.isArray(result?.data) && result.data.length > 0) {
-                const first = result.data[0];
-                if (first && first.url) imageUrl = first.url;
-                else if (Array.isArray(first) && first[0]?.url) imageUrl = first[0].url;
+            if (Array.isArray(result?.data)) {
+                if (result.data[1]?.url) {
+                    imageUrl = result.data[1].url;
+                } else if (result.data[0]?.url) {
+                    imageUrl = result.data[0].url;
+                } else if (Array.isArray(result.data[0]) && result.data[0][1]?.url) {
+                    imageUrl = result.data[0][1].url;
+                } else if (Array.isArray(result.data[0]) && result.data[0][0]?.url) {
+                    imageUrl = result.data[0][0].url;
+                }
             } else if (result?.data?.url) {
                 imageUrl = result.data.url;
             }
             
             if (imageUrl) {
-                const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
+                const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
                 // Always ensure standard PNG with alpha channel
                 cutoutBuffer = await sharp(Buffer.from(imgResp.data))
                     .ensureAlpha()
@@ -1294,6 +1305,9 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
     await ensureDBConnected();
     console.log(`[BackdropComposite] AI Photobooth Engine processing template: ${templateId}...`);
     const tempSubjectCutout = path.join(getUploadDir('selfies'), `cutout_${uuidv4()}.png`);
+    let masterBuffer = null;
+    let mW = 1080;
+    let mH = 1080;
 
     try {
         try {
@@ -1326,10 +1340,6 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
                 }
             } catch(e) {}
         }
-
-        let masterBuffer = null;
-        let mW = 1080;
-        let mH = 1080;
 
         // 1. Try masterTemplatePath parameter if valid
         if (masterTemplatePath && fs.existsSync(masterTemplatePath) && fs.statSync(masterTemplatePath).size > 1000) {
@@ -1466,9 +1476,9 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
 
         console.log(`[BackdropComposite] Calibrated Placement: anchor(${adminCX}, ${adminCY}, size=${adminSZ}) -> placed at left=${left}, top=${top}, ${subW}x${subH} on canvas ${mW}x${mH} (bottom=${top+subH})`);
 
-        // 3. Studio Rim-Light Backlight Aura (matching event spotlight)
-        const glowW = Math.round(subW * 1.06);
-        const glowH = Math.round(subH * 1.04);
+        // 3. Studio Rim-Light Backlight Aura (strictly clamped to canvas dimensions)
+        const glowW = Math.min(mW, Math.round(subW * 1.06));
+        const glowH = Math.min(mH, Math.round(subH * 1.04));
         const svgRimGlow = Buffer.from(`
         <svg width="${glowW}" height="${glowH}" xmlns="http://www.w3.org/2000/svg">
             <ellipse cx="${glowW/2}" cy="${glowH*0.45}" rx="${glowW*0.44}" ry="${glowH*0.46}" fill="#fff4cc" opacity="0.22"/>
@@ -1477,15 +1487,15 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         const glowLeft = Math.max(0, Math.min(Math.round(left - (glowW - subW) / 2), mW - glowW));
         const glowTop = Math.max(0, Math.min(Math.round(top - (glowH - subH) / 2), mH - glowH));
 
-        // 4. Dual-Layer Ground Contact Shadows (Inner Sharp Shadow + Outer Soft Directional Shadow)
-        const shadowW = Math.round(subW * 0.82);
-        const shadowH = Math.max(8, Math.round(subH * 0.06));
+        // 4. Dual-Layer Ground Contact Shadows (strictly clamped so dimensions <= mW and mH)
+        const shadowW = Math.min(mW, Math.round(subW * 0.82));
+        const shadowH = Math.min(mH, Math.max(8, Math.round(subH * 0.06)));
 
         const svgInnerShadow = Buffer.from(`<svg width="${shadowW}" height="${shadowH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${shadowW/2}" cy="${shadowH/2}" rx="${shadowW*0.46}" ry="${shadowH*0.42}" fill="#000" opacity="0.50"/></svg>`);
         const innerShadowBuf = await sharp(svgInnerShadow).blur(3).png().toBuffer();
 
-        const outerW = Math.round(shadowW * 1.3);
-        const outerH = Math.round(shadowH * 1.6);
+        const outerW = Math.min(mW, Math.round(shadowW * 1.3));
+        const outerH = Math.min(mH, Math.round(shadowH * 1.6));
         const svgOuterShadow = Buffer.from(`<svg width="${outerW}" height="${outerH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${outerW/2}" cy="${outerH/2}" rx="${outerW*0.45}" ry="${outerH*0.45}" fill="#000" opacity="0.28"/></svg>`);
         const outerShadowBuf = await sharp(svgOuterShadow).blur(9).png().toBuffer();
 

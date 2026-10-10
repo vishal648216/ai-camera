@@ -1,19 +1,27 @@
 import sys
 import io
-from rembg import remove
+import os
+from rembg import remove, new_session
 from PIL import Image
 
 def process_image(input_path, output_path):
     try:
-        with open(input_path, 'rb') as i:
-            input_data = i.read()
-            
-        output_data = remove(input_data)
+        img = Image.open(input_path)
+        # Ensure RGB/RGBA
+        if img.mode not in ('RGB', 'RGBA'):
+            img = img.convert('RGB')
         
-        # Save as PNG
-        with open(output_path, 'wb') as o:
-            o.write(output_data)
+        # Downscale huge mobile camera images to max 1024px for fast processing
+        img.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+        
+        session = new_session('u2netp')
+        out_img = remove(img, session=session)
+        
+        # Ensure RGBA and save PNG
+        if out_img.mode != 'RGBA':
+            out_img = out_img.convert('RGBA')
             
+        out_img.save(output_path, 'PNG', optimize=True)
         print("Success")
     except Exception as e:
         print("Error:", str(e))
@@ -24,3 +32,4 @@ if __name__ == "__main__":
         print("Usage: python remove_bg.py <input> <output>")
         sys.exit(1)
     process_image(sys.argv[1], sys.argv[2])
+
