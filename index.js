@@ -1003,10 +1003,9 @@ app.post('/api/check-user', async (req, res) => {
     }
 });
 
-// Force Vercel bundler to include remove_bg_imgly and background-removal-data
+// Force Vercel bundler to include background-removal-data
 try {
     if (false) {
-        require('./remove_bg_imgly');
         require('@imgly/background-removal-data');
     }
 } catch(e) {}
@@ -1025,7 +1024,6 @@ async function performBackgroundRemoval(inputPath) {
             }
             console.log(`[AI-AutoEnhance] Input image mean brightness: ${meanBrightness.toFixed(1)}`);
             
-            // If selfie is dim (< 120), automatically boost brightness, contrast, and vibrant saturation
             if (meanBrightness > 0 && meanBrightness < 120) {
                 const boostFactor = Math.min(1.35, 1.0 + ((120 - meanBrightness) / 200));
                 console.log(`[AI-AutoEnhance] Auto-boosting dim selfie exposure by factor: ${boostFactor.toFixed(2)}`);
@@ -1050,7 +1048,7 @@ async function performBackgroundRemoval(inputPath) {
 
     let cutoutBuffer = null;
 
-    // Only attempt external Python rembg if running locally on Windows and NOT on Vercel/serverless
+    // PRIORITY 1: Python rembg (local Windows only, best quality)
     if (process.platform === 'win32' && !process.env.VERCEL) {
         try {
             const pyScript = path.join(__dirname, 'remove_bg.py');
@@ -1069,34 +1067,98 @@ async function performBackgroundRemoval(inputPath) {
         }
     }
 
-    // GUARANTEED FAST SHARP PORTRAIT EXTRACTION (<200ms on Vercel serverless)
+    // PRIORITY 2: @imgly/background-removal-node — Real AI background removal (works on Vercel too!)
     if (!cutoutBuffer) {
-        console.log("[BackgroundRemoval] Applying Instant High-Fidelity Portrait Contour Mask via Sharp (<200ms)");
+        try {
+            console.log("[BackgroundRemoval] Using @imgly/background-removal-node for real AI background removal...");
+            const { removeBackground } = require('@imgly/background-removal-node');
+            const imgBuf = fs.readFileSync(inputPath);
+            
+            // Convert buffer to Blob (imgly expects Blob or URL)
+            const { Blob } = require('buffer');
+            const inputBlob = new Blob([imgBuf], { type: 'image/png' });
+            
+            const outputBlob = await removeBackground(inputBlob, {
+                model: 'medium',
+                output: { format: 'image/png', quality: 1.0 },
+                progress: () => {}
+            });
+            
+            // Convert Blob back to Buffer
+            const arrayBuffer = await outputBlob.arrayBuffer();
+            cutoutBuffer = Buffer.from(arrayBuffer);
+            console.log(`[BackgroundRemoval] @imgly AI background removal SUCCESS (${cutoutBuffer.length} bytes)!`);
+        } catch(imglyErr) {
+            console.warn(`[BackgroundRemoval] @imgly notice: ${imglyErr.message}`);
+        }
+    }
+
+    // PRIORITY 3: Sharp luma-key fallback (last resort only)
+    if (!cutoutBuffer) {
+        console.log("[BackgroundRemoval] Using Sharp luma-key fallback...");
         try {
             const imgBuf = fs.readFileSync(inputPath);
             const meta = await sharp(imgBuf).metadata();
             const w = meta.width || 800;
             const h = meta.height || 1000;
 
-            const smoothContourSvg = Buffer.from(`
-            <svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                    <radialGradient id="softCenter" cx="50%" cy="42%" r="58%">
-                        <stop offset="0%" stop-color="#fff" stop-opacity="1"/>
-                        <stop offset="70%" stop-color="#fff" stop-opacity="1"/>
-                        <stop offset="90%" stop-color="#fff" stop-opacity="0.5"/>
-                        <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
-                    </radialGradient>
-                </defs>
-                <rect width="${w}" height="${h}" fill="url(#softCenter)"/>
-            </svg>`);
+            // Convert to RGBA, use threshold-based alpha mask on light/white backgrounds
+            const rawPixels = await sharp(imgBuf)
+                .ensureAlpha()
+                .raw()
+                .toBuffer({ resolveWithObject: true });
 
-            const maskBuf = await sharp(smoothContourSvg).blur(10).png().toBuffer();
-            cutoutBuffer = await sharp(imgBuf)
-                .composite([{ input: maskBuf, blend: 'dest-in' }])
-                .png()
-                .toBuffer();
+            const { data, info: rawInfo } = rawPixels;
+            const channels = rawInfo.channels; // 4 (RGBA)
+            const totalPixels = rawInfo.width * rawInfo.height;
+
+            // Detect background color from corners (sample 5x5 corner regions)
+            const cornerSamples = [];
+            const sampleSize = 5;
+            for (let sy = 0; sy < sampleSize && sy < rawInfo.height; sy++) {
+                for (let sx = 0; sx < sampleSize && sx < rawInfo.width; sx++) {
+                    const idx = (sy * rawInfo.width + sx) * channels;
+                    cornerSamples.push({ r: data[idx], g: data[idx+1], b: data[idx+2] });
+                }
+            }
+            // Top-right corner
+            for (let sy = 0; sy < sampleSize && sy < rawInfo.height; sy++) {
+                for (let sx = rawInfo.width - sampleSize; sx < rawInfo.width; sx++) {
+                    const idx = (sy * rawInfo.width + sx) * channels;
+                    cornerSamples.push({ r: data[idx], g: data[idx+1], b: data[idx+2] });
+                }
+            }
+
+            // Average background color
+            const avgR = cornerSamples.reduce((s, c) => s + c.r, 0) / cornerSamples.length;
+            const avgG = cornerSamples.reduce((s, c) => s + c.g, 0) / cornerSamples.length;
+            const avgB = cornerSamples.reduce((s, c) => s + c.b, 0) / cornerSamples.length;
+            console.log(`[Sharp-Fallback] Detected bg color: R=${avgR.toFixed(0)} G=${avgG.toFixed(0)} B=${avgB.toFixed(0)}`);
+
+            // Apply color-distance based alpha mask
+            const threshold = 50; // pixels within 50 color distance of bg color get removed
+            const outputData = Buffer.from(data);
+            for (let i = 0; i < totalPixels; i++) {
+                const idx = i * channels;
+                const dr = data[idx] - avgR;
+                const dg = data[idx+1] - avgG;
+                const db = data[idx+2] - avgB;
+                const dist = Math.sqrt(dr*dr + dg*dg + db*db);
+                if (dist < threshold) {
+                    outputData[idx + 3] = 0; // Make transparent
+                } else if (dist < threshold + 30) {
+                    // Soft edge anti-aliasing
+                    outputData[idx + 3] = Math.round(((dist - threshold) / 30) * 255);
+                }
+            }
+
+            cutoutBuffer = await sharp(outputData, {
+                raw: { width: rawInfo.width, height: rawInfo.height, channels }
+            }).png({ quality: 100 }).toBuffer();
+
+            console.log(`[Sharp-Fallback] Color-distance background removal done (${cutoutBuffer.length} bytes)`);
         } catch(cropErr) {
+            console.warn("[Sharp-Fallback] Error:", cropErr.message);
             cutoutBuffer = fs.readFileSync(inputPath);
         }
     }
@@ -1113,6 +1175,7 @@ async function performBackgroundRemoval(inputPath) {
 
     return cutoutBuffer;
 }
+
 
 app.post('/api/process-face', upload.single('selfie'), async (req, res) => {
     if (!req.file) return res.status(400).send('No file');
