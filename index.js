@@ -237,8 +237,7 @@ function loadConfigTemplates() {
                         name: t.name || 'Event Template',
                         mode: t.mode || 'backdrop',
                         desc: t.desc || '',
-                        imageUrl: (rawData && rawData.startsWith('data:image')) ? rawData : relativeUrl,
-                        imageData: (rawData && rawData.startsWith('data:image')) ? rawData : relativeUrl,
+                        imageUrl: relativeUrl,
                         circleX: t.circleX || 540,
                         circleY: t.circleY || 450,
                         circleSize: t.circleSize || 700,
@@ -255,48 +254,58 @@ function loadConfigTemplates() {
     return [];
 }
 
-async function safeGetTemplates(all = true) {
-    await ensureDBConnected();
+async function safeGetTemplates(all = true, includeBase64 = false) {
     const cfgTemps = loadConfigTemplates();
     let list = [...cfgTemps];
-    
-    try {
-        if (mongoose.connection.readyState === 1) {
-            const filter = all ? {} : { isActive: { $ne: false } };
-            const temps = await Template.find(filter).sort({ sortOrder: 1, _id: -1 }).lean();
-            if (temps && temps.length > 0) {
-                for (const rawT of temps) {
-                    const tid = rawT.id || (rawT._id ? rawT._id.toString() : '');
-                    const t = { ...rawT, id: tid };
-                    if (tid && (t.imageData || t.imageUrl || t.master_image) && !list.some(x => x.id === tid)) {
-                        list.push(t);
-                    }
-                }
-            }
-        }
-    } catch (e) {}
 
     if (dbStore.templates && Array.isArray(dbStore.templates)) {
         for (const rawT of dbStore.templates) {
             const tid = rawT.id || (rawT._id ? rawT._id.toString() : '');
             const t = { ...rawT, id: tid };
-            if (tid && (t.imageData || t.imageUrl || t.master_image) && !list.some(x => x.id === tid)) {
+            if (tid && !list.some(x => x.id === tid)) {
                 list.push(t);
             }
         }
     }
+    
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const filter = all ? {} : { isActive: { $ne: false } };
+            const projection = includeBase64 ? {} : { imageData: 0 };
+            const queryPromise = Template.find(filter, projection).sort({ sortOrder: 1, _id: -1 }).lean();
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500));
+            const temps = await Promise.race([queryPromise, timeoutPromise]);
+            if (temps && temps.length > 0) {
+                for (const rawT of temps) {
+                    const tid = rawT.id || (rawT._id ? rawT._id.toString() : '');
+                    const t = { ...rawT, id: tid };
+                    if (tid && !list.some(x => x.id === tid)) {
+                        list.push(t);
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        // Fallback to local/cached templates immediately
+    }
 
     const mapped = list.map(t => {
         const tid = t.id || (t._id ? t._id.toString() : '');
-        const base64Uri = (t.imageData && t.imageData.startsWith('data:image')) 
-            ? t.imageData 
-            : ((t.imageUrl && t.imageUrl.startsWith('data:image')) ? t.imageUrl : (t.master_image && t.master_image.startsWith('data:image')) ? t.master_image : `/uploads/templates/${tid}.png`);
-        return {
+        const cleanUrl = (t.imageUrl && !t.imageUrl.startsWith('data:image')) 
+            ? t.imageUrl 
+            : `/uploads/templates/${tid}.png`;
+        
+        const resObj = {
             ...t,
             id: tid,
-            imageData: base64Uri,
-            imageUrl: base64Uri
+            imageUrl: cleanUrl
         };
+        if (!includeBase64) {
+            delete resObj.imageData;
+        } else if (!resObj.imageData && t.imageUrl && t.imageUrl.startsWith('data:image')) {
+            resObj.imageData = t.imageUrl;
+        }
+        return resObj;
     });
 
     // Pre-extract Base64 template images to disk so cold starts are instant!
@@ -862,25 +871,34 @@ app.get('/api/templates', async (req, res) => {
     }
 });
 
-app.get('/api/admin/templates', async (req, res) => res.json(await safeGetTemplates(true)));
+app.get('/api/admin/templates', async (req, res) => {
+    try {
+        const temps = await safeGetTemplates(true, false);
+        res.json(temps);
+    } catch(err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 app.patch('/api/admin/templates/:id', async (req, res) => {
-    const temps = await safeGetTemplates(true);
+    const temps = await safeGetTemplates(true, true);
     const t = temps.find(x => x.id === req.params.id);
     if (t) {
         t.isActive = !t.isActive;
         await safeSaveTemplate(t);
     }
-    res.json(t || { success: true });
+    const cleanT = t ? { ...t, imageUrl: `/uploads/templates/${t.id}.png` } : { success: true };
+    delete cleanT.imageData;
+    res.json(cleanT);
 });
 app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) => {
     try {
-        const temps = await safeGetTemplates(true);
+        const temps = await safeGetTemplates(true, true);
         let t = temps.find(x => x.id === req.params.id);
         if (!t) return res.status(404).json({ error: "Template not found" });
 
         const tId = t.id;
         let base64Data = t.imageData;
-        let relUrl = (base64Data && base64Data.startsWith('data:image')) ? base64Data : (t.imageUrl || `/uploads/templates/${tId}.png`);
+        let relUrl = `/uploads/templates/${tId}.png`;
 
         if (req.file) {
             ensureFileSaved(req.file, 'templates');
@@ -895,17 +913,25 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
                         .png({ compressionLevel: 7 })
                         .toBuffer();
                     base64Data = `data:image/png;base64,${compressedBuf.toString('base64')}`;
-                    relUrl = base64Data;
+                    relUrl = `/uploads/templates/${tId}.png`;
                     const diskPath = path.join(getUploadDir('templates'), `${tId}.png`);
                     try { fs.writeFileSync(diskPath, compressedBuf); } catch(e) {}
                 } catch(sharpErr) {
                     console.error("Sharp error on update:", sharpErr.message);
                     const mime = req.file.mimetype || 'image/png';
                     base64Data = `data:${mime};base64,${fileBuf.toString('base64')}`;
-                    relUrl = base64Data;
+                    relUrl = `/uploads/templates/${tId}.png`;
+                    const diskPath = path.join(getUploadDir('templates'), `${tId}.png`);
+                    try { fs.writeFileSync(diskPath, fileBuf); } catch(e) {}
                 }
             }
         }
+
+        const imgW = parseInt(req.body.imgW) || t.imgW || 1080;
+        const imgH = parseInt(req.body.imgH) || t.imgH || 1080;
+        const circleX = (!isNaN(parseInt(req.body.circleX)) && isFinite(parseInt(req.body.circleX))) ? parseInt(req.body.circleX) : (t.circleX || Math.round(imgW / 2));
+        const circleY = (!isNaN(parseInt(req.body.circleY)) && isFinite(parseInt(req.body.circleY))) ? parseInt(req.body.circleY) : (t.circleY || Math.round(imgH * 0.75));
+        const circleSize = (!isNaN(parseInt(req.body.circleSize)) && isFinite(parseInt(req.body.circleSize))) ? parseInt(req.body.circleSize) : (t.circleSize || Math.round(imgH * 0.35));
 
         t = {
             ...t,
@@ -914,17 +940,18 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
             desc: req.body.desc || t.desc,
             imageUrl: relUrl,
             imageData: base64Data,
-            imgW: parseInt(req.body.imgW) || t.imgW || 1080,
-            imgH: parseInt(req.body.imgH) || t.imgH || 1080,
-            circleX: parseInt(req.body.circleX) !== undefined && !isNaN(parseInt(req.body.circleX)) ? parseInt(req.body.circleX) : t.circleX,
-            circleY: parseInt(req.body.circleY) !== undefined && !isNaN(parseInt(req.body.circleY)) ? parseInt(req.body.circleY) : t.circleY,
-            circleSize: parseInt(req.body.circleSize) !== undefined && !isNaN(parseInt(req.body.circleSize)) ? parseInt(req.body.circleSize) : t.circleSize,
+            imgW: imgW,
+            imgH: imgH,
+            circleX: circleX,
+            circleY: circleY,
+            circleSize: circleSize,
             maskShape: req.body.maskShape || t.maskShape,
             updatedAt: new Date().toISOString()
         };
 
         await safeSaveTemplate(t);
-        res.json(t);
+        const { imageData, ...lightweightT } = t;
+        res.json({ ...lightweightT, imageUrl: relUrl });
     } catch(e) {
         console.error("Error updating template:", e);
         res.status(500).json({ error: e.message });
@@ -957,17 +984,25 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
                         .png({ compressionLevel: 7 })
                         .toBuffer();
                     base64Data = `data:image/png;base64,${compressedBuf.toString('base64')}`;
-                    relUrl = base64Data;
+                    relUrl = `/uploads/templates/${tId}.png`;
                     const diskPath = path.join(getUploadDir('templates'), `${tId}.png`);
                     try { fs.writeFileSync(diskPath, compressedBuf); } catch(e) {}
                 } catch(sharpErr) {
                     console.error("Sharp error on upload:", sharpErr.message);
                     const mime = req.file.mimetype || 'image/png';
                     base64Data = `data:${mime};base64,${fileBuf.toString('base64')}`;
-                    relUrl = base64Data;
+                    relUrl = `/uploads/templates/${tId}.png`;
+                    const diskPath = path.join(getUploadDir('templates'), `${tId}.png`);
+                    try { fs.writeFileSync(diskPath, fileBuf); } catch(e) {}
                 }
             }
         }
+        const imgW = parseInt(req.body.imgW) || 1080;
+        const imgH = parseInt(req.body.imgH) || 1080;
+        const circleX = (!isNaN(parseInt(req.body.circleX)) && isFinite(parseInt(req.body.circleX))) ? parseInt(req.body.circleX) : Math.round(imgW / 2);
+        const circleY = (!isNaN(parseInt(req.body.circleY)) && isFinite(parseInt(req.body.circleY))) ? parseInt(req.body.circleY) : Math.round(imgH * 0.75);
+        const circleSize = (!isNaN(parseInt(req.body.circleSize)) && isFinite(parseInt(req.body.circleSize))) ? parseInt(req.body.circleSize) : Math.round(imgH * 0.35);
+
         const t = {
             id: tId,
             name: req.body.name || 'Unnamed',
@@ -975,17 +1010,18 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
             desc: req.body.desc || (req.body.mode === 'face_swap' ? 'Face Swap Costume Template' : 'Full-Body Event Backdrop Template'),
             imageUrl: relUrl,
             imageData: base64Data,
-            imgW: parseInt(req.body.imgW) || 1080,
-            imgH: parseInt(req.body.imgH) || 1080,
-            circleX: parseInt(req.body.circleX) !== undefined ? parseInt(req.body.circleX) : 540,
-            circleY: parseInt(req.body.circleY) !== undefined ? parseInt(req.body.circleY) : 450,
-            circleSize: parseInt(req.body.circleSize) !== undefined ? parseInt(req.body.circleSize) : 300,
+            imgW: imgW,
+            imgH: imgH,
+            circleX: circleX,
+            circleY: circleY,
+            circleSize: circleSize,
             maskShape: req.body.maskShape || 'circle',
             isActive: true,
             createdAt: new Date().toISOString()
         };
         await safeSaveTemplate(t);
-        res.json(t);
+        const { imageData, ...lightweightT } = t;
+        res.json({ ...lightweightT, imageUrl: relUrl });
     } catch(e) {
         console.error("Error creating template:", e);
         res.status(500).json({ error: e.message });
