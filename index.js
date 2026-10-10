@@ -1067,31 +1067,81 @@ async function performBackgroundRemoval(inputPath) {
         }
     }
 
-    // PRIORITY 2: @imgly/background-removal-node — Real AI background removal (works on Vercel too!)
+    // PRIORITY 2: HuggingFace BRIA-RMBG-2.0 via Gradio (FREE, State-of-the-art AI, works on Vercel!)
     if (!cutoutBuffer) {
         try {
-            console.log("[BackgroundRemoval] Using @imgly/background-removal-node for real AI background removal...");
-            const { removeBackground } = require('@imgly/background-removal-node');
+            console.log("[BackgroundRemoval] Calling HuggingFace BRIA-RMBG-2.0 via Gradio...");
+            const { Client } = require('@gradio/client');
             
-            // Pass file path directly — this is the correct API for @imgly/background-removal-node
+            // Resize huge selfies down to max 1280px for fast cloud transmission & inference
+            let sendBuf = fs.readFileSync(inputPath);
+            try {
+                sendBuf = await sharp(sendBuf)
+                    .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+                    .png({ quality: 90 })
+                    .toBuffer();
+            } catch(reErr) {}
+
+            const blob = new Blob([sendBuf], { type: 'image/png' });
+            
+            // 25s timeout protection so Vercel function never hangs
+            const gradioCall = (async () => {
+                const client = await Client.connect('briaai/BRIA-RMBG-2.0');
+                return await client.predict('/image', { image: blob });
+            })();
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("HuggingFace Gradio timeout after 25s")), 25000)
+            );
+            
+            const result = await Promise.race([gradioCall, timeoutPromise]);
+            
+            // Extract transparent cutout image URL from gradio response
+            let imageUrl = null;
+            if (Array.isArray(result?.data) && result.data.length > 0) {
+                const first = result.data[0];
+                if (first && first.url) imageUrl = first.url;
+                else if (Array.isArray(first) && first[0]?.url) imageUrl = first[0].url;
+            } else if (result?.data?.url) {
+                imageUrl = result.data.url;
+            }
+            
+            if (imageUrl) {
+                const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
+                // Always ensure standard PNG with alpha channel
+                cutoutBuffer = await sharp(Buffer.from(imgResp.data))
+                    .ensureAlpha()
+                    .png({ quality: 100 })
+                    .toBuffer();
+                console.log(`[BackgroundRemoval] HuggingFace BRIA-RMBG-2.0 SUCCESS (${cutoutBuffer.length} bytes)!`);
+            } else {
+                throw new Error("No image URL in Gradio response");
+            }
+        } catch(gradioErr) {
+            console.warn(`[BackgroundRemoval] HuggingFace Gradio notice: ${gradioErr.message}`);
+        }
+    }
+
+    // PRIORITY 3: @imgly/background-removal-node (Secondary AI fallback)
+    if (!cutoutBuffer) {
+        try {
+            console.log("[BackgroundRemoval] Trying secondary @imgly fallback...");
+            const { removeBackground } = require('@imgly/background-removal-node');
             const outputBlob = await removeBackground(inputPath, {
                 model: 'medium',
                 output: { format: 'image/png', quality: 1.0 },
                 progress: () => {}
             });
-            
-            // Convert Blob to Buffer
             const arrayBuffer = await outputBlob.arrayBuffer();
-            cutoutBuffer = Buffer.from(arrayBuffer);
-            console.log(`[BackgroundRemoval] @imgly AI background removal SUCCESS (${cutoutBuffer.length} bytes)!`);
+            cutoutBuffer = await sharp(Buffer.from(arrayBuffer)).ensureAlpha().png().toBuffer();
+            console.log(`[BackgroundRemoval] @imgly fallback SUCCESS (${cutoutBuffer.length} bytes)!`);
         } catch(imglyErr) {
-            console.warn(`[BackgroundRemoval] @imgly notice: ${imglyErr.message}`);
+            console.warn(`[BackgroundRemoval] @imgly fallback notice: ${imglyErr.message}`);
         }
     }
 
-    // PRIORITY 3: Safe plain fallback — use original image as-is (no destructive edits)
+    // PRIORITY 4: Safe plain fallback — original image as-is (NO destructive masks)
     if (!cutoutBuffer) {
-        console.log("[BackgroundRemoval] Using safe plain fallback (original selfie, no bg removal)");
+        console.log("[BackgroundRemoval] Using safe plain fallback (original selfie)");
         try {
             cutoutBuffer = await sharp(fs.readFileSync(inputPath)).ensureAlpha().png().toBuffer();
         } catch(fallErr) {
