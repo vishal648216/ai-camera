@@ -1101,43 +1101,6 @@ body {
     transform: scaleX(-1); /* Mirror selfie for intuitive feel */
 }
 
-/* Portrait Face Guide (Oval) */
-.camera-face-guide {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    z-index: 5;
-}
-
-.guide-oval {
-    width: clamp(210px, 34vh, 280px);
-    height: clamp(280px, 46vh, 380px);
-    border: 2.5px dashed rgba(0, 242, 254, 0.6);
-    border-radius: 50% 50% 48% 48% / 55% 55% 45% 45%;
-    box-shadow: 0 0 25px rgba(0, 242, 254, 0.2), inset 0 0 20px rgba(0, 242, 254, 0.1);
-    animation: guideGlow 2.5s infinite alternate ease-in-out;
-}
-
-@keyframes guideGlow {
-    0% { border-color: rgba(0, 242, 254, 0.4); }
-    100% { border-color: rgba(0, 242, 254, 0.9); box-shadow: 0 0 35px rgba(0, 242, 254, 0.4); }
-}
-
-.guide-hint {
-    margin-top: 14px;
-    font-size: 12px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.85);
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(6px);
-    padding: 4px 14px;
-    border-radius: var(--radius-pill);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-}
 
 .camera-modal-footer {
     position: absolute;
