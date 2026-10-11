@@ -28,18 +28,23 @@
         <!-- App Header -->
         <header class="app-header">
             <button id="btn-back" class="icon-btn hidden" aria-label="Go Back">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="19" y1="12" x2="5" y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>
                 </svg>
             </button>
             <div class="brand-title">
                 <span class="brand-badge">⚡ AI PHOTO BOOTH</span>
-                <span id="header-title" class="header-text">Capture Your Look</span>
+                <span id="header-title" class="header-text">Selfie Camera</span>
             </div>
-            <div class="header-status" id="server-status-pill" title="Backend Connection Status">
-                <span class="status-dot"></span>
-                <span id="server-status-text">Connected</span>
+            <div class="header-actions">
+                <button type="button" id="btn-header-new" class="btn-compact-reset" title="Start New Photo Session">
+                    <span>+ New</span>
+                </button>
+                <div class="header-status" id="server-status-pill" title="Backend Connection Status">
+                    <span class="status-dot"></span>
+                    <span id="server-status-text">Connected</span>
+                </div>
             </div>
         </header>
 
@@ -51,9 +56,10 @@
                  ============================================== -->
             <section id="screen-selfie" class="screen active">
                 <div class="screen-content">
-                    <div class="screen-intro">
-                        <h1 class="headline">Capture Your Look</h1>
-                        <p class="subheadline">Take a clear selfie in good lighting.</p>
+                    <!-- Compact Instructions Bar -->
+                    <div class="compact-screen-header">
+                        <span class="compact-badge">STEP 1 OF 3</span>
+                        <span class="compact-title">Capture or Upload Selfie</span>
                     </div>
 
                     <!-- Circular Camera / Photo Preview Container -->
@@ -153,9 +159,9 @@
                  ============================================== -->
             <section id="screen-themes" class="screen">
                 <div class="screen-content">
-                    <div class="screen-intro">
-                        <h1 class="headline">Choose Your Master Template</h1>
-                        <p class="subheadline">Select a fixed master template. Your face will be automatically fitted and blended.</p>
+                    <div class="compact-screen-header">
+                        <span class="compact-badge">STEP 2 OF 3</span>
+                        <span class="compact-title">Choose Master Template</span>
                     </div>
 
                     <!-- Search / Filter Bar -->
@@ -200,9 +206,9 @@
                  ============================================== -->
             <section id="screen-result" class="screen">
                 <div class="screen-content">
-                    <div class="screen-intro text-center">
-                        <h1 class="headline" id="result-headline">Your AI Photo is Ready</h1>
-                        <p class="subheadline" id="result-subheadline">High-fidelity generative composite complete.</p>
+                    <div class="compact-screen-header text-center">
+                        <span class="compact-badge green">COMPLETE</span>
+                        <span class="compact-title">Your AI Photo is Ready!</span>
                     </div>
 
                     <!-- Generation Loading Stage -->
@@ -224,7 +230,7 @@
                     <!-- Error Alert State (If Timeout or Generation Failure occurs) -->
                     <div id="result-error-card" class="result-error-card hidden">
                         <div class="error-icon-box">
-                            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
                                 <line x1="12" y1="9" x2="12" y2="13"></line>
                                 <line x1="12" y1="17" x2="12.01" y2="17"></line>
@@ -256,19 +262,19 @@
                             </div>
                         </div>
 
-                        <!-- Action Bar (Retake, QR Code, Download/Save) -->
+                        <!-- Action Bar (Download & QR) -->
                         <div class="result-actions-grid">
-                            <button type="button" id="btn-retake" class="btn-action outline">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M23 4v6h-6"></path>
-                                    <path d="M1 20v-6h6"></path>
-                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            <button type="button" id="btn-download-result" class="btn-action outline">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="7 10 12 15 17 10"></polyline>
+                                    <line x1="12" y1="15" x2="12" y2="3"></line>
                                 </svg>
-                                <span>RETAKE</span>
+                                <span>SAVE PHOTO</span>
                             </button>
 
                             <button type="button" id="btn-open-qr" class="btn-action outline">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                                     <rect x="3" y="3" width="7" height="7"></rect>
                                     <rect x="14" y="3" width="7" height="7"></rect>
                                     <rect x="14" y="14" width="7" height="7"></rect>
@@ -278,19 +284,25 @@
                             </button>
                         </div>
 
+                        <!-- New Photo (Next Person) Instant Reset Button -->
                         <div class="result-primary-footer">
-                            <button type="button" id="btn-download-result" class="btn-primary cta-glow">
+                            <button type="button" id="btn-new-photo-main" class="btn-primary cta-glow">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                    <polyline points="7 10 12 15 17 10"></polyline>
-                                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                    <circle cx="12" cy="13" r="4"></circle>
                                 </svg>
-                                <span>SAVE & FINISH</span>
+                                <span>📸 CREATE NEW PHOTO (NEXT PERSON)</span>
                             </button>
 
-                            <button type="button" id="btn-change-template" class="link-btn mt-2">
-                                Choose Different Template
-                            </button>
+                            <div class="result-secondary-row">
+                                <button type="button" id="btn-retake" class="link-btn">
+                                    Retake Selfie
+                                </button>
+                                <span class="dot-separator">•</span>
+                                <button type="button" id="btn-change-template" class="link-btn">
+                                    Change Template
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

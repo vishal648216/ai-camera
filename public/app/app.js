@@ -95,6 +95,8 @@
         btnOpenQr: document.getElementById('btn-open-qr'),
         btnDownloadResult: document.getElementById('btn-download-result'),
         btnChangeTemplate: document.getElementById('btn-change-template'),
+        btnNewPhotoMain: document.getElementById('btn-new-photo-main'),
+        btnHeaderNew: document.getElementById('btn-header-new'),
 
         // Modal QR
         modalQr: document.getElementById('modal-qr'),
@@ -176,6 +178,8 @@
 
         // Screen 3: Results
         elements.btnRetake.addEventListener('click', resetToSelfie);
+        if (elements.btnNewPhotoMain) elements.btnNewPhotoMain.addEventListener('click', resetToSelfie);
+        if (elements.btnHeaderNew) elements.btnHeaderNew.addEventListener('click', resetToSelfie);
         elements.btnOpenQr.addEventListener('click', openQrModal);
         elements.btnCloseQr.addEventListener('click', closeQrModal);
         elements.modalQr.addEventListener('click', (e) => {
@@ -696,14 +700,43 @@
         document.body.removeChild(link);
     }
 
-    // Reset Flow Back to Selfie Capture
+    // Complete Reset Flow Back to Selfie Capture (For Next Person)
     function resetToSelfie() {
+        stopCameraStream();
         state.capturedBlob = null;
         state.capturedDataUrl = null;
+        state.selectedTemplateId = null;
+        state.selectedTemplateName = null;
+        state.currentRegId = null;
+        state.currentShareUrl = null;
+        state.currentResultData = null;
+
+        // Reset attendee form
+        if (elements.inputName) elements.inputName.value = '';
+        if (elements.inputCompany) elements.inputCompany.value = '';
+        if (elements.inputEmail) elements.inputEmail.value = '';
+
+        // Reset selfie preview state
+        elements.selfiePreviewImg.src = '';
         elements.selfiePreviewImg.classList.add('hidden');
         elements.selfiePlaceholder.classList.remove('hidden');
         elements.selfieCircle.classList.remove('has-photo');
         elements.btnProceedThemes.disabled = true;
+
+        // Reset template selection state
+        elements.btnGeneratePhoto.disabled = true;
+        document.querySelectorAll('.template-card').forEach(c => {
+            c.classList.remove('selected');
+            const check = c.querySelector('.selected-check-bubble');
+            if (check) check.remove();
+        });
+
+        // Hide result showcases & loading overlays
+        elements.resultShowcaseCard.classList.add('hidden');
+        elements.generationLoader.classList.add('hidden');
+        elements.resultErrorCard.classList.add('hidden');
+
+        // Clean transition back to Screen 1
         navigateToScreen('screen-selfie');
     }
 
