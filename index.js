@@ -1095,7 +1095,7 @@ async function performBackgroundRemoval(inputPath) {
             const pyScript = path.join(__dirname, 'remove_bg.py');
             const tmpOut = path.join(getUploadDir('selfies'), `py_cutout_${uuidv4()}.png`);
             await new Promise((resolve, reject) => {
-                exec(`python "${pyScript}" "${inputPath}" "${tmpOut}"`, { timeout: 12000 }, (error) => {
+                exec(`python "${pyScript}" "${inputPath}" "${tmpOut}"`, { timeout: 25000 }, (error) => {
                     if (!error && fs.existsSync(tmpOut) && fs.statSync(tmpOut).size > 1000) return resolve();
                     reject(error || new Error("Python rembg failed"));
                 });
@@ -1195,16 +1195,6 @@ async function performBackgroundRemoval(inputPath) {
             cutoutBuffer = fs.readFileSync(inputPath);
         }
     }
-
-    // Matte Edge Anti-Aliasing & Soft De-Fringing
-    try {
-        const alphaChannel = await sharp(cutoutBuffer).extractChannel('alpha').toBuffer();
-        const blurredAlpha = await sharp(alphaChannel).blur(1.2).png().toBuffer();
-        cutoutBuffer = await sharp(cutoutBuffer)
-            .composite([{ input: blurredAlpha, blend: 'dest-in' }])
-            .png({ quality: 100 })
-            .toBuffer();
-    } catch(matteErr) {}
 
     return cutoutBuffer;
 }
