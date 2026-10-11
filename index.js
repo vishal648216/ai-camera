@@ -1172,31 +1172,64 @@ async function performBackgroundRemoval(inputPath) {
         }
     }
 
-    // PRIORITY 3: @imgly/background-removal-node (Secondary AI fallback)
+    // PRIORITY 3: @imgly/background-removal-node (Guaranteed In-Memory Neural Fallback)
     if (!cutoutBuffer) {
         try {
-            console.log("[BackgroundRemoval] Trying secondary @imgly fallback...");
+            console.log("[BackgroundRemoval] Trying in-memory @imgly neural fallback (model: small)...");
             const { removeBackground } = require('@imgly/background-removal-node');
-            const outputBlob = await removeBackground(inputPath, {
-                model: 'medium',
-                output: { format: 'image/png', quality: 1.0 },
-                progress: () => {}
+            
+            // Resize to max 640px for ultra-fast, low-memory ONNX inference
+            let imglyInputBuf = fs.readFileSync(inputPath);
+            try {
+                imglyInputBuf = await sharp(imglyInputBuf)
+                    .resize(640, 640, { fit: 'inside', withoutEnlargement: true })
+                    .png()
+                    .toBuffer();
+            } catch(e) {}
+            
+            const imglyBlob = new Blob([imglyInputBuf], { type: 'image/png' });
+            const outputBlob = await removeBackground(imglyBlob, {
+                model: 'small',
+                output: { format: 'image/png', quality: 0.95 }
             });
             const arrayBuffer = await outputBlob.arrayBuffer();
             cutoutBuffer = await sharp(Buffer.from(arrayBuffer)).ensureAlpha().png().toBuffer();
-            console.log(`[BackgroundRemoval] @imgly fallback SUCCESS (${cutoutBuffer.length} bytes)!`);
+            console.log(`[BackgroundRemoval] @imgly neural fallback SUCCESS (${cutoutBuffer.length} bytes)!`);
         } catch(imglyErr) {
             console.warn(`[BackgroundRemoval] @imgly fallback notice: ${imglyErr.message}`);
         }
     }
 
-    // PRIORITY 4: Safe plain fallback — original image as-is (NO destructive masks)
+    // PRIORITY 4: Soft-Edged Natural Blending Fallback (Never a harsh rectangular box!)
     if (!cutoutBuffer) {
-        console.log("[BackgroundRemoval] Using safe plain fallback (original selfie)");
+        console.log("[BackgroundRemoval] Applying feathered soft vignette alpha fallback...");
         try {
-            cutoutBuffer = await sharp(fs.readFileSync(inputPath)).ensureAlpha().png().toBuffer();
-        } catch(fallErr) {
-            cutoutBuffer = fs.readFileSync(inputPath);
+            const origBuf = fs.readFileSync(inputPath);
+            const meta = await sharp(origBuf).metadata();
+            const w = meta.width || 600;
+            const h = meta.height || 800;
+            const rx = Math.round(w * 0.45);
+            const ry = Math.round(h * 0.48);
+            const cx = Math.round(w * 0.5);
+            const cy = Math.round(h * 0.5);
+            const maskSvg = `<svg width="${w}" height="${h}">
+                <defs>
+                    <radialGradient id="grad" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                        <stop offset="68%" stop-color="#fff" stop-opacity="1" />
+                        <stop offset="92%" stop-color="#fff" stop-opacity="0.3" />
+                        <stop offset="100%" stop-color="#fff" stop-opacity="0" />
+                    </radialGradient>
+                </defs>
+                <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#grad)" />
+            </svg>`;
+            cutoutBuffer = await sharp(origBuf)
+                .resize(w, h)
+                .ensureAlpha()
+                .composite([{ input: Buffer.from(maskSvg), blend: 'dest-in' }])
+                .png()
+                .toBuffer();
+        } catch(maskErr) {
+            cutoutBuffer = await sharp(fs.readFileSync(inputPath)).ensureAlpha().png().toBuffer().catch(() => fs.readFileSync(inputPath));
         }
     }
 
