@@ -251,23 +251,38 @@
     async function openCameraModal() {
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                // Fallback to mobile native camera input
                 elements.fileInputCamera.click();
                 return;
             }
 
             elements.modalCamera.classList.remove('hidden');
 
-            const constraints = {
-                video: {
-                    facingMode: state.cameraFacingMode,
-                    width: { ideal: 1280 },
-                    height: { ideal: 1280 }
-                },
-                audio: false
-            };
+            let stream = null;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: state.cameraFacingMode },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+            } catch (e1) {
+                console.warn("Retrying with simple facingMode:", e1.message);
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: state.cameraFacingMode },
+                        audio: false
+                    });
+                } catch (e2) {
+                    console.warn("Retrying with basic video constraint:", e2.message);
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: true,
+                        audio: false
+                    });
+                }
+            }
 
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
             state.cameraStream = stream;
             elements.modalWebcamVideo.srcObject = stream;
             await elements.modalWebcamVideo.play().catch(() => {});

@@ -44,24 +44,26 @@
 
 html, body {
     width: 100%;
-    height: 100vh;
-    max-height: 100vh;
+    min-height: 100%;
+    min-height: 100dvh;
     background-color: var(--bg-primary);
     color: var(--text-primary);
     font-family: var(--font-body);
-    overflow: hidden; /* Complete zero-scroll on page */
     user-select: none;
     -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
 }
 
 body {
     background: radial-gradient(circle at 50% 0%, #302B63 0%, #0F0C29 70%, #080616 100%);
     display: flex;
     justify-content: center;
-    align-items: center;
-    height: 100vh;
-    max-height: 100vh;
+    align-items: stretch;
+    min-height: 100vh;
+    min-height: 100dvh;
     padding: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 /* Ambient Animated Lighting Auras */
@@ -113,9 +115,9 @@ body {
     position: relative;
     width: 100%;
     max-width: 480px;
-    height: 100vh;
-    max-height: 100vh;
-    background: rgba(15, 12, 41, 0.90);
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: rgba(15, 12, 41, 0.95);
     backdrop-filter: blur(25px);
     -webkit-backdrop-filter: blur(25px);
     border-left: 1px solid rgba(255, 255, 255, 0.08);
@@ -124,18 +126,22 @@ body {
     flex-direction: column;
     z-index: 1;
     box-shadow: 0 0 60px rgba(0, 0, 0, 0.7);
-    overflow: hidden;
+    overflow: visible;
 }
 
-@media (min-width: 560px) {
+@media (min-width: 600px) {
     body {
-        padding: 8px 0;
+        align-items: center;
+        padding: 12px 0;
     }
     .app-viewport {
         border-radius: 24px;
-        height: min(98vh, 720px);
-        max-height: min(98vh, 720px);
+        height: min(96vh, 840px);
+        max-height: min(96vh, 840px);
+        min-height: auto;
         border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(0, 242, 254, 0.15);
+        overflow: hidden;
     }
 }
 
@@ -258,23 +264,26 @@ body {
     flex: 1;
     min-height: 0;
     position: relative;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
 }
 
 .screen {
     display: none;
-    height: 100%;
-    padding: 8px 16px 12px;
-    overflow: hidden;
+    min-height: 100%;
+    padding: 10px 16px 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     animation: fadeInSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .screen.active {
     display: flex;
     flex-direction: column;
-    height: 100%;
 }
 
 @keyframes fadeInSlide {
@@ -292,9 +301,9 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
+    min-height: 100%;
+    flex: 1;
+    gap: 12px;
 }
 
 /* Compact Step Headers (Eliminates Huge Redundant Banners) */
@@ -926,31 +935,30 @@ body {
     margin-bottom: 12px;
 }
 
-/* Result Showcase Card (Zero Scroll Viewport Fit) */
+/* Result Showcase Card (Polished Premium Layout) */
 .result-showcase-card {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    height: 100%;
+    justify-content: flex-start;
+    gap: 12px;
+    flex: 1;
     min-height: 0;
-    gap: 8px;
     animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .image-stage {
     position: relative;
     width: 100%;
-    flex: 1;
-    min-height: 0;
-    max-height: clamp(210px, 42vh, 320px);
+    height: clamp(230px, 42vh, 340px);
     border-radius: var(--radius-md);
     overflow: hidden;
     background: #000000;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
-    border: 1.5px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 242, 254, 0.15);
+    border: 1.5px solid rgba(0, 242, 254, 0.35);
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .final-image {
@@ -964,42 +972,84 @@ body {
 
 .watermark-pill {
     position: absolute;
-    bottom: 8px;
-    right: 8px;
-    background: rgba(0, 0, 0, 0.65);
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 242, 254, 0.4);
     border-radius: var(--radius-pill);
-    padding: 3px 8px;
-    font-size: 9px;
-    font-weight: 700;
+    padding: 3px 10px;
+    font-size: 9.5px;
+    font-weight: 800;
     letter-spacing: 0.8px;
     color: var(--accent-cyan);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 .result-actions-grid {
-    display: flex;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
     flex-shrink: 0;
 }
 
 .result-primary-footer {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 10px;
     flex-shrink: 0;
+    margin-top: 2px;
 }
 
+/* Secondary Button Row: Retake Selfie & Change Template (Modern Button Styling) */
 .result-secondary-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+}
+
+.btn-secondary-action {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    font-size: 11.5px;
+    gap: 8px;
+    padding: 12px 14px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
 }
 
-.dot-separator {
-    color: var(--text-muted);
+.btn-secondary-action:hover {
+    background: rgba(0, 242, 254, 0.15);
+    border-color: rgba(0, 242, 254, 0.6);
+    color: var(--accent-cyan);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 242, 254, 0.25);
+}
+
+.btn-secondary-action:active {
+    transform: translateY(0);
+}
+
+.btn-secondary-action svg {
+    color: var(--accent-cyan);
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.btn-secondary-action:hover svg {
+    transform: scale(1.1);
 }
 
 /* ==========================================================================
