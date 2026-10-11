@@ -57,7 +57,7 @@ app.get('/', (req, res) => {
     if (acceptsHtml) {
         return res.redirect('/app/');
     }
-    res.json({ status: "online", app: "AI Photo Booth Backend API", timestamp: new Date().toISOString() });
+    res.json({ status: "online", app: "Apni Company AI Photo Booth API", timestamp: new Date().toISOString() });
 });
 
 app.get('/api/results/:id', async (req, res) => {
