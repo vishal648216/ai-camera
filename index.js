@@ -1130,8 +1130,9 @@ async function performBackgroundRemoval(inputPath) {
             const blob = new Blob([sendBuf], { type: 'image/png' });
             
             // 20s timeout protection so serverless function never hangs
+            const hfToken = process.env.HF_TOKEN || process.env.HUGGINGFACE_TOKEN || process.env.HUGGING_FACE_HUB_TOKEN;
             const gradioCall = (async () => {
-                const client = await Client.connect('briaai/BRIA-RMBG-2.0');
+                const client = await Client.connect('briaai/BRIA-RMBG-2.0', hfToken ? { hf_token: hfToken, token: hfToken } : {});
                 return await client.predict('/image', { image: blob });
             })();
             const timeoutPromise = new Promise((_, reject) => 
