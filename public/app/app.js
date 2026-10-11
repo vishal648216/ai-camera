@@ -66,6 +66,14 @@
         btnProceedThemes: document.getElementById('btn-proceed-themes'),
         hiddenSnapCanvas: document.getElementById('hidden-snap-canvas'),
         
+        // Fullscreen Live Camera Modal
+        modalCamera: document.getElementById('modal-camera'),
+        modalWebcamVideo: document.getElementById('modal-webcam-video'),
+        btnModalSnap: document.getElementById('btn-modal-snap'),
+        btnCloseCameraModal: document.getElementById('btn-close-camera-modal'),
+        btnModalFlipCamera: document.getElementById('btn-modal-flip-camera'),
+        modalCameraFlash: document.getElementById('modal-camera-flash'),
+        
         // Attendee Details
         btnToggleAttendee: document.getElementById('btn-toggle-attendee'),
         attendeeForm: document.getElementById('attendee-form'),
@@ -157,10 +165,15 @@
             elements.btnToggleAttendee.classList.toggle('active', isHidden);
         });
 
-        // Screen 1: Camera Controls
-        elements.btnOpenCamera.addEventListener('click', toggleLiveCamera);
-        elements.btnSnapCamera.addEventListener('click', captureLivePhoto);
-        elements.btnSwitchCamera.addEventListener('click', flipCamera);
+        // Screen 1: Camera Controls (Fullscreen Modal Viewfinder)
+        elements.btnOpenCamera.addEventListener('click', openCameraModal);
+        elements.selfieCircle.addEventListener('click', () => {
+            if (!state.capturedBlob) openCameraModal();
+        });
+        if (elements.btnCloseCameraModal) elements.btnCloseCameraModal.addEventListener('click', closeCameraModal);
+        if (elements.btnModalFlipCamera) elements.btnModalFlipCamera.addEventListener('click', flipCamera);
+        if (elements.btnModalSnap) elements.btnModalSnap.addEventListener('click', captureModalLivePhoto);
+
         elements.btnOpenGallery.addEventListener('click', () => elements.fileInputGallery.click());
         elements.fileInputGallery.addEventListener('change', handleFileSelected);
         elements.fileInputCamera.addEventListener('change', handleFileSelected);
@@ -232,24 +245,19 @@
     }
 
     // =========================================================================
-    // Camera & Selfie Handling
     // =========================================================================
-    async function toggleLiveCamera() {
-        if (state.cameraStream) {
-            stopCameraStream();
-            return;
-        }
-
+    // Fullscreen Camera Popup Modal Handling
+    // =========================================================================
+    async function openCameraModal() {
         try {
-            // Check if getUserMedia is supported
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                // Fallback to native mobile camera input
+                // Fallback to mobile native camera input
                 elements.fileInputCamera.click();
                 return;
             }
 
-            elements.btnOpenCamera.innerHTML = `<span>CONNECTING...</span>`;
-            
+            elements.modalCamera.classList.remove('hidden');
+
             const constraints = {
                 video: {
                     facingMode: state.cameraFacingMode,
@@ -261,23 +269,20 @@
 
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             state.cameraStream = stream;
-            elements.webcamVideo.srcObject = stream;
-
-            // UI updates
-            elements.selfiePlaceholder.classList.add('hidden');
-            elements.selfiePreviewImg.classList.add('hidden');
-            elements.webcamVideo.classList.remove('hidden');
-            elements.btnSwitchCamera.classList.remove('hidden');
-            elements.btnOpenCamera.classList.add('hidden');
-            elements.btnSnapCamera.classList.remove('hidden');
-
-            elements.selfieCircle.classList.add('has-photo');
+            elements.modalWebcamVideo.srcObject = stream;
+            await elements.modalWebcamVideo.play().catch(() => {});
 
         } catch (err) {
-            console.warn("Direct webcam access notice:", err.message);
-            stopCameraStream();
-            // Trigger native device camera directly
+            console.warn("Camera modal stream notice:", err.message);
+            closeCameraModal();
             elements.fileInputCamera.click();
+        }
+    }
+
+    function closeCameraModal() {
+        stopCameraStream();
+        if (elements.modalCamera) {
+            elements.modalCamera.classList.add('hidden');
         }
     }
 
@@ -286,77 +291,80 @@
             state.cameraStream.getTracks().forEach(t => t.stop());
             state.cameraStream = null;
         }
-        elements.webcamVideo.srcObject = null;
-        elements.webcamVideo.classList.add('hidden');
-        elements.btnSwitchCamera.classList.add('hidden');
-        elements.btnSnapCamera.classList.add('hidden');
-        elements.btnOpenCamera.classList.remove('hidden');
-        elements.btnOpenCamera.innerHTML = `
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                <circle cx="12" cy="13" r="4"></circle>
-            </svg>
-            <span>CAMERA</span>
-        `;
+        if (elements.modalWebcamVideo) {
+            elements.modalWebcamVideo.srcObject = null;
+        }
+        if (elements.webcamVideo) {
+            elements.webcamVideo.srcObject = null;
+            elements.webcamVideo.classList.add('hidden');
+        }
     }
 
     async function flipCamera() {
         state.cameraFacingMode = state.cameraFacingMode === 'user' ? 'environment' : 'user';
         stopCameraStream();
-        await toggleLiveCamera();
+        await openCameraModal();
     }
 
-    function captureLivePhoto() {
+    function captureModalLivePhoto() {
         if (!state.cameraStream) return;
 
-        // Flash animation
-        elements.cameraFlash.classList.add('flash-active');
-        setTimeout(() => elements.cameraFlash.classList.remove('flash-active'), 250);
-
-        const video = elements.webcamVideo;
-        const canvas = elements.hiddenSnapCanvas;
-        
-        // Target high-definition resolution capped to max 1280px
-        const maxDim = 1280;
-        let w = video.videoWidth || 720;
-        let h = video.videoHeight || 960;
-        
-        if (w > maxDim || h > maxDim) {
-            if (w > h) {
-                h = Math.round((h * maxDim) / w);
-                w = maxDim;
-            } else {
-                w = Math.round((w * maxDim) / h);
-                h = maxDim;
-            }
+        // Visual Shutter Flash animation
+        if (elements.modalCameraFlash) {
+            elements.modalCameraFlash.classList.add('flash-active');
         }
 
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-
-        // If front camera, mirror horizontal so captured photo matches preview
-        if (state.cameraFacingMode === 'user') {
-            ctx.translate(w, 0);
-            ctx.scale(-1, 1);
-        }
-        ctx.drawImage(video, 0, 0, w, h);
-
-        canvas.toBlob((blob) => {
-            if (blob) {
-                state.capturedBlob = blob;
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
-                state.capturedDataUrl = dataUrl;
-                
-                // Display captured photo
-                elements.selfiePreviewImg.src = dataUrl;
-                elements.selfiePreviewImg.classList.remove('hidden');
-                stopCameraStream();
-                elements.selfiePlaceholder.classList.add('hidden');
-                elements.selfieCircle.classList.add('has-photo');
-                elements.btnProceedThemes.disabled = false;
+        setTimeout(() => {
+            if (elements.modalCameraFlash) {
+                elements.modalCameraFlash.classList.remove('flash-active');
             }
-        }, 'image/jpeg', 0.90);
+
+            const video = elements.modalWebcamVideo;
+            const canvas = elements.hiddenSnapCanvas;
+            const maxDim = 1280;
+            let w = video.videoWidth || 720;
+            let h = video.videoHeight || 960;
+
+            if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                    h = Math.round((h * maxDim) / w);
+                    w = maxDim;
+                } else {
+                    w = Math.round((w * maxDim) / h);
+                    h = maxDim;
+                }
+            }
+
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+
+            // If front selfie camera, mirror horizontally so captured photo looks natural
+            if (state.cameraFacingMode === 'user') {
+                ctx.translate(w, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(video, 0, 0, w, h);
+
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    state.capturedBlob = blob;
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                    state.capturedDataUrl = dataUrl;
+
+                    // Immediately display captured selfie in circular frame on main screen
+                    elements.selfiePreviewImg.src = dataUrl;
+                    elements.selfiePreviewImg.classList.remove('hidden');
+                    elements.selfiePlaceholder.classList.add('hidden');
+                    elements.selfieCircle.classList.add('has-photo');
+                    elements.btnProceedThemes.disabled = false;
+
+                    // Close the full-screen camera popup modal cleanly
+                    closeCameraModal();
+                }
+            }, 'image/jpeg', 0.92);
+
+        }, 150);
     }
 
     function handleFileSelected(e) {
@@ -702,7 +710,7 @@
 
     // Complete Reset Flow Back to Selfie Capture (For Next Person)
     function resetToSelfie() {
-        stopCameraStream();
+        closeCameraModal();
         state.capturedBlob = null;
         state.capturedDataUrl = null;
         state.selectedTemplateId = null;

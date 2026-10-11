@@ -311,6 +311,52 @@
     </div>
 
     <!-- ==============================================
+         FULLSCREEN LIVE CAMERA MODAL (Popup Viewfinder)
+         ============================================== -->
+    <div id="modal-camera" class="camera-modal-backdrop hidden">
+        <div class="camera-viewfinder-card">
+            <!-- Top Controls (Close, Title, Flip) -->
+            <div class="camera-modal-header">
+                <button type="button" id="btn-close-camera-modal" class="camera-icon-btn" title="Close Camera">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+                <span class="camera-modal-title">Live Camera</span>
+                <button type="button" id="btn-modal-flip-camera" class="camera-icon-btn" title="Flip Camera">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 10c0-4.418-3.582-8-8-8s-8 3.582-8 8c0 2.21 .896 4.21 2.343 5.657L4 18h6v-6l-2.222 2.222A5.96 5.96 0 0 1 6 10c0-3.314 2.686-6 6-6s6 2.686 6 6c0 1.657-.672 3.157-1.757 4.243L14.83 15.66"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Fullscreen Video Viewfinder Stage -->
+            <div class="camera-viewfinder-stage">
+                <video id="modal-webcam-video" autoplay playsinline muted class="modal-camera-stream"></video>
+                
+                <!-- Face Oval Positioning Guide -->
+                <div class="camera-face-guide">
+                    <div class="guide-oval"></div>
+                    <span class="guide-hint">Align your face inside the circle</span>
+                </div>
+
+                <!-- Shutter Flash Animation -->
+                <div id="modal-camera-flash" class="camera-flash"></div>
+            </div>
+
+            <!-- Bottom Shutter Bar -->
+            <div class="camera-modal-footer">
+                <button type="button" id="btn-modal-snap" class="camera-shutter-btn" title="Snap Photo">
+                    <div class="shutter-btn-outer">
+                        <div class="shutter-btn-inner"></div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==============================================
          QR CODE MODAL (For instant mobile phone download)
          ============================================== -->
     <div id="modal-qr" class="modal-backdrop hidden">

@@ -1003,6 +1003,200 @@ body {
 }
 
 /* ==========================================================================
+   Full-Screen Live Camera Viewfinder Modal
+   ========================================================================== */
+.camera-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #000000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.camera-modal-backdrop.hidden {
+    display: none !important;
+}
+
+.camera-viewfinder-card {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-width: 520px;
+    background: #000000;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+}
+
+@media (min-width: 560px) {
+    .camera-viewfinder-card {
+        height: min(98vh, 760px);
+        border-radius: 28px;
+        box-shadow: 0 0 60px rgba(0, 242, 254, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+}
+
+.camera-modal-header {
+    height: 60px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+}
+
+.camera-modal-title {
+    font-family: var(--font-heading);
+    font-size: 15px;
+    font-weight: 700;
+    color: #FFFFFF;
+    letter-spacing: 0.5px;
+}
+
+.camera-icon-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.camera-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.08);
+}
+
+.camera-viewfinder-stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #080808;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-camera-stream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror selfie for intuitive feel */
+}
+
+/* Portrait Face Guide (Oval) */
+.camera-face-guide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.guide-oval {
+    width: clamp(210px, 34vh, 280px);
+    height: clamp(280px, 46vh, 380px);
+    border: 2.5px dashed rgba(0, 242, 254, 0.6);
+    border-radius: 50% 50% 48% 48% / 55% 55% 45% 45%;
+    box-shadow: 0 0 25px rgba(0, 242, 254, 0.2), inset 0 0 20px rgba(0, 242, 254, 0.1);
+    animation: guideGlow 2.5s infinite alternate ease-in-out;
+}
+
+@keyframes guideGlow {
+    0% { border-color: rgba(0, 242, 254, 0.4); }
+    100% { border-color: rgba(0, 242, 254, 0.9); box-shadow: 0 0 35px rgba(0, 242, 254, 0.4); }
+}
+
+.guide-hint {
+    margin-top: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(6px);
+    padding: 4px 14px;
+    border-radius: var(--radius-pill);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.camera-modal-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 110px;
+    padding-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 100%);
+    z-index: 10;
+}
+
+.camera-shutter-btn {
+    width: 74px;
+    height: 74px;
+    border-radius: 50%;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease;
+}
+
+.camera-shutter-btn:active {
+    transform: scale(0.92);
+}
+
+.shutter-btn-outer {
+    width: 74px;
+    height: 74px;
+    border-radius: 50%;
+    border: 4px solid #FFFFFF;
+    box-shadow: 0 0 20px rgba(0, 242, 254, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.shutter-btn-inner {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+    box-shadow: 0 0 15px rgba(0, 242, 254, 0.6);
+    transition: all 0.2s;
+}
+
+.camera-shutter-btn:hover .shutter-btn-inner {
+    transform: scale(1.05);
+    background: #FFFFFF;
+}
+
+/* ==========================================================================
    QR Code Modal View
    ========================================================================== */
 .modal-backdrop {
