@@ -1272,12 +1272,11 @@ async function autoEnhanceSubjectCutout(cutoutBuf) {
         
         let enhanced = await sharp(orientedBuf)
             .modulate({
-                brightness: 1.06, // Crisp, vibrant studio lighting
-                saturation: 1.12, // Rich natural human skin and clothing tones
+                brightness: 1.04, // Soft, vibrant studio lighting
+                saturation: 1.06, // Natural human skin and clothing tones
                 hue: 0
             })
-            .linear(1.05, -3) // Micro-contrast boost to eliminate dull mobile camera wash
-            .sharpen({ sigma: 1.0, m1: 1.2, m2: 2.0 }) // High-definition portrait clarity
+            .sharpen() // Clean natural portrait clarity without noisy halos
             .png({ quality: 100 })
             .toBuffer();
 
@@ -1477,28 +1476,31 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         const glowLeft = Math.max(0, Math.min(Math.round(left - (glowW - subW) / 2), mW - glowW));
         const glowTop = Math.max(0, Math.min(Math.round(top - (glowH - subH) / 2), mH - glowH));
 
-        // 4. Dual-Layer Ground Contact Shadows (strictly clamped so dimensions <= mW and mH)
-        const shadowW = Math.min(mW, Math.round(subW * 0.82));
-        const shadowH = Math.min(mH, Math.max(8, Math.round(subH * 0.06)));
+        let compositeLayers = [];
 
-        const svgInnerShadow = Buffer.from(`<svg width="${shadowW}" height="${shadowH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${shadowW/2}" cy="${shadowH/2}" rx="${shadowW*0.46}" ry="${shadowH*0.42}" fill="#000" opacity="0.50"/></svg>`);
-        const innerShadowBuf = await sharp(svgInnerShadow).blur(3).png().toBuffer();
+        // Ground Contact Shadows only if standing above bottom edge
+        if (top + subH < mH - 8) {
+            const shadowW = Math.min(mW, Math.round(subW * 0.82));
+            const shadowH = Math.min(mH, Math.max(8, Math.round(subH * 0.06)));
 
-        const outerW = Math.min(mW, Math.round(shadowW * 1.3));
-        const outerH = Math.min(mH, Math.round(shadowH * 1.6));
-        const svgOuterShadow = Buffer.from(`<svg width="${outerW}" height="${outerH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${outerW/2}" cy="${outerH/2}" rx="${outerW*0.45}" ry="${outerH*0.45}" fill="#000" opacity="0.28"/></svg>`);
-        const outerShadowBuf = await sharp(svgOuterShadow).blur(9).png().toBuffer();
+            const svgInnerShadow = Buffer.from(`<svg width="${shadowW}" height="${shadowH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${shadowW/2}" cy="${shadowH/2}" rx="${shadowW*0.46}" ry="${shadowH*0.42}" fill="#000" opacity="0.45"/></svg>`);
+            const innerShadowBuf = await sharp(svgInnerShadow).blur(3).png().toBuffer();
 
-        const shadowLeft = Math.max(0, Math.min(Math.round(left + (subW - shadowW) / 2), mW - shadowW));
-        const shadowTop = Math.max(0, Math.min(Math.round(top + subH - shadowH), mH - shadowH));
-        const outerLeft = Math.max(0, Math.min(Math.round(left + (subW - outerW) / 2), mW - outerW));
-        const outerTop = Math.max(0, Math.min(Math.round(top + subH - outerH), mH - outerH));
+            const outerW = Math.min(mW, Math.round(shadowW * 1.3));
+            const outerH = Math.min(mH, Math.round(shadowH * 1.6));
+            const svgOuterShadow = Buffer.from(`<svg width="${outerW}" height="${outerH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${outerW/2}" cy="${outerH/2}" rx="${outerW*0.45}" ry="${outerH*0.45}" fill="#000" opacity="0.25"/></svg>`);
+            const outerShadowBuf = await sharp(svgOuterShadow).blur(9).png().toBuffer();
 
-        let compositeLayers = [
-            { input: outerShadowBuf, top: outerTop, left: outerLeft },
-            { input: innerShadowBuf, top: shadowTop, left: shadowLeft },
-            { input: resizedSubject, top, left }
-        ];
+            const shadowLeft = Math.max(0, Math.min(Math.round(left + (subW - shadowW) / 2), mW - shadowW));
+            const shadowTop = Math.max(0, Math.min(Math.round(top + subH - shadowH), mH - shadowH));
+            const outerLeft = Math.max(0, Math.min(Math.round(left + (subW - outerW) / 2), mW - outerW));
+            const outerTop = Math.max(0, Math.min(Math.round(top + subH - outerH), mH - outerH));
+
+            compositeLayers.push({ input: outerShadowBuf, top: outerTop, left: outerLeft });
+            compositeLayers.push({ input: innerShadowBuf, top: shadowTop, left: shadowLeft });
+        }
+
+        compositeLayers.push({ input: resizedSubject, top, left });
 
         // DUAL-LAYER FOREGROUND FRAME OVERLAY (Layer 3 - PNG Frame with Gold/Branding Borders)
         if (tmplData && (tmplData.frameOverlay || tmplData.overlay_image)) {

@@ -18,22 +18,21 @@ def process_image(input_path, output_path):
         # Human-specific neural segmentation for clean portrait/selfie cutout
         try:
             session = new_session('u2net_human_seg')
-            out_img = remove(img, session=session)
+            out_img = remove(img, session=session, post_process_mask=True)
         except Exception as segErr:
             print(f"Notice fallback to u2netp: {segErr}", file=sys.stderr)
             session = new_session('u2netp')
-            out_img = remove(img, session=session)
+            out_img = remove(img, session=session, post_process_mask=True)
         
         # Ensure RGBA
         if out_img.mode != 'RGBA':
             out_img = out_img.convert('RGBA')
             
-        # Clean solid alpha threshold so the person is 100% opaque, not see-through/ghostly
+        # Subtle 1px anti-aliasing on the alpha channel for ultra-smooth edge blending
+        from PIL import ImageFilter
         r, g, b, a = out_img.split()
-        arr_a = np.array(a, dtype=np.float32)
-        # Boost alpha inside the subject: any confidence > 20 is mapped to solid 255 with soft 2px anti-aliased edge
-        boosted_a = np.clip((arr_a - 15) / (50 - 15) * 255.0, 0, 255).astype(np.uint8)
-        out_img = Image.merge('RGBA', (r, g, b, Image.fromarray(boosted_a)))
+        a_smooth = a.filter(ImageFilter.GaussianBlur(radius=0.7))
+        out_img = Image.merge('RGBA', (r, g, b, a_smooth))
             
         out_img.save(output_path, 'PNG', optimize=True)
         print("Success")
