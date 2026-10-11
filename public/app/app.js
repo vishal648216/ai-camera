@@ -158,12 +158,14 @@
         // Navigation
         elements.btnBack.addEventListener('click', handleGoBack);
 
-        // Attendee Info Accordion
-        elements.btnToggleAttendee.addEventListener('click', () => {
-            const isHidden = elements.attendeeForm.classList.contains('hidden');
-            elements.attendeeForm.classList.toggle('hidden', !isHidden);
-            elements.btnToggleAttendee.classList.toggle('active', isHidden);
-        });
+        // Attendee Info Accordion (if present)
+        if (elements.btnToggleAttendee && elements.attendeeForm) {
+            elements.btnToggleAttendee.addEventListener('click', () => {
+                const isHidden = elements.attendeeForm.classList.contains('hidden');
+                elements.attendeeForm.classList.toggle('hidden', !isHidden);
+                elements.btnToggleAttendee.classList.toggle('active', isHidden);
+            });
+        }
 
         // Screen 1: Camera Controls (Fullscreen Modal Viewfinder)
         elements.btnOpenCamera.addEventListener('click', openCameraModal);
@@ -610,9 +612,9 @@
             formData.append('selfie', state.capturedBlob, 'selfie.jpg');
             formData.append('themeId', state.selectedTemplateId);
             formData.append('themeName', state.selectedTemplateName || 'Event Masterpiece');
-            formData.append('name', elements.inputName.value.trim() || 'Guest User');
-            formData.append('company', elements.inputCompany.value.trim() || 'Self');
-            formData.append('email', elements.inputEmail.value.trim() || 'guest@example.com');
+            formData.append('name', (elements.inputName && elements.inputName.value ? elements.inputName.value.trim() : '') || 'Guest User');
+            formData.append('company', (elements.inputCompany && elements.inputCompany.value ? elements.inputCompany.value.trim() : '') || 'Event Guest');
+            formData.append('email', (elements.inputEmail && elements.inputEmail.value ? elements.inputEmail.value.trim() : '') || 'guest@example.com');
             formData.append('gender', 'Male');
 
             // Set generous 90-second timeout matching our fixed backend
