@@ -53,6 +53,10 @@ app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {
+    const acceptsHtml = req.headers.accept && req.headers.accept.includes('text/html');
+    if (acceptsHtml) {
+        return res.redirect('/app/');
+    }
     res.json({ status: "online", app: "AI Photo Booth Backend API", timestamp: new Date().toISOString() });
 });
 
