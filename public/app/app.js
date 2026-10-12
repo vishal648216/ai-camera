@@ -376,8 +376,17 @@
                     elements.selfieCircle.classList.add('has-photo');
                     elements.btnProceedThemes.disabled = false;
 
+                    // Update camera button label so user knows photo is taken and this is for retake
+                    const camSpan = elements.btnOpenCamera ? elements.btnOpenCamera.querySelector('span') : null;
+                    if (camSpan) camSpan.textContent = 'RETAKE PHOTO';
+
                     // Close the full-screen camera popup modal cleanly
                     closeCameraModal();
+
+                    // Smoothly auto-advance to Themes screen so user isn't stuck seeing camera/gallery options
+                    setTimeout(() => {
+                        navigateToScreen('screen-themes');
+                    }, 350);
                 }
             }, 'image/jpeg', 0.92);
 
@@ -423,6 +432,14 @@
                     elements.selfiePlaceholder.classList.add('hidden');
                     elements.selfieCircle.classList.add('has-photo');
                     elements.btnProceedThemes.disabled = false;
+
+                    const camSpan = elements.btnOpenCamera ? elements.btnOpenCamera.querySelector('span') : null;
+                    if (camSpan) camSpan.textContent = 'RETAKE PHOTO';
+
+                    // Smoothly auto-advance to Themes screen
+                    setTimeout(() => {
+                        navigateToScreen('screen-themes');
+                    }, 350);
                 }, 'image/jpeg', 0.90);
             };
             img.src = event.target.result;
@@ -747,6 +764,8 @@
         elements.selfiePlaceholder.classList.remove('hidden');
         elements.selfieCircle.classList.remove('has-photo');
         elements.btnProceedThemes.disabled = true;
+        const camSpan = elements.btnOpenCamera ? elements.btnOpenCamera.querySelector('span') : null;
+        if (camSpan) camSpan.textContent = 'CAMERA';
 
         // Reset template selection state
         elements.btnGeneratePhoto.disabled = true;

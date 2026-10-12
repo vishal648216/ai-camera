@@ -1131,13 +1131,13 @@ async function performBackgroundRemoval(inputPath) {
             const clientOptions = hfToken ? { hf_token: hfToken, token: hfToken } : {};
 
             // List of top AI Background Removal spaces in fallback order:
-            // 1) BRIA-RMBG-2.0 (State of the art)
-            // 2) BRIA-RMBG-1.4 (Official CPU space - no ZeroGPU quota needed!)
-            // 3) not-lain/background-removal (Public RMBG mirror)
+            // 1) BRIA-RMBG-1.4 (Official CPU space - fast 2-3s inference, no ZeroGPU quota needed!)
+            // 2) not-lain/background-removal (Fast RMBG mirror)
+            // 3) BRIA-RMBG-2.0 (High-res fallback space)
             const aiProviders = [
-                { space: 'briaai/BRIA-RMBG-2.0', endpoint: '/image', payload: { image: blob } },
                 { space: 'briaai/BRIA-RMBG-1.4', endpoint: '/run', payload: { image: blob } },
-                { space: 'not-lain/background-removal', endpoint: '/png', payload: { f: blob } }
+                { space: 'not-lain/background-removal', endpoint: '/png', payload: { f: blob } },
+                { space: 'briaai/BRIA-RMBG-2.0', endpoint: '/image', payload: { image: blob } }
             ];
 
             for (const provider of aiProviders) {
@@ -1149,7 +1149,7 @@ async function performBackgroundRemoval(inputPath) {
                     })();
                     
                     const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error(`Timeout after 15s on ${provider.space}`)), 15000)
+                        setTimeout(() => reject(new Error(`Timeout after 10s on ${provider.space}`)), 10000)
                     );
                     
                     const result = await Promise.race([gradioCall, timeoutPromise]);
