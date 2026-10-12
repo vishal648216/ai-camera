@@ -1112,10 +1112,9 @@ async function performBackgroundRemoval(inputPath) {
         }
     }
 
-    // PRIORITY 2: HuggingFace BRIA-RMBG-2.0 via Gradio (FREE, State-of-the-art AI, works on Vercel!)
+    // PRIORITY 2: Cloud AI Background Removal via HuggingFace Gradio (Multiple ultra-reliable spaces)
     if (!cutoutBuffer) {
         try {
-            console.log("[BackgroundRemoval] Calling HuggingFace BRIA-RMBG-2.0 via Gradio...");
             const { Client } = require('@gradio/client');
             
             // Resize selfies down to max 1024px for fast cloud transmission & inference
@@ -1128,48 +1127,63 @@ async function performBackgroundRemoval(inputPath) {
             } catch(reErr) {}
 
             const blob = new Blob([sendBuf], { type: 'image/png' });
-            
-            // 20s timeout protection so serverless function never hangs
             const hfToken = process.env.HF_TOKEN || process.env.HUGGINGFACE_TOKEN || process.env.HUGGING_FACE_HUB_TOKEN;
-            const gradioCall = (async () => {
-                const client = await Client.connect('briaai/BRIA-RMBG-2.0', hfToken ? { hf_token: hfToken, token: hfToken } : {});
-                return await client.predict('/image', { image: blob });
-            })();
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("HuggingFace Gradio timeout after 20s")), 20000)
-            );
-            
-            const result = await Promise.race([gradioCall, timeoutPromise]);
-            
-            // Extract transparent cutout image URL from gradio response (index 1 is no_bg_image.png)
-            let imageUrl = null;
-            if (Array.isArray(result?.data)) {
-                if (result.data[1]?.url) {
-                    imageUrl = result.data[1].url;
-                } else if (result.data[0]?.url) {
-                    imageUrl = result.data[0].url;
-                } else if (Array.isArray(result.data[0]) && result.data[0][1]?.url) {
-                    imageUrl = result.data[0][1].url;
-                } else if (Array.isArray(result.data[0]) && result.data[0][0]?.url) {
-                    imageUrl = result.data[0][0].url;
+            const clientOptions = hfToken ? { hf_token: hfToken, token: hfToken } : {};
+
+            // List of top AI Background Removal spaces in fallback order:
+            // 1) BRIA-RMBG-2.0 (State of the art)
+            // 2) BRIA-RMBG-1.4 (Official CPU space - no ZeroGPU quota needed!)
+            // 3) not-lain/background-removal (Public RMBG mirror)
+            const aiProviders = [
+                { space: 'briaai/BRIA-RMBG-2.0', endpoint: '/image', payload: { image: blob } },
+                { space: 'briaai/BRIA-RMBG-1.4', endpoint: '/run', payload: { image: blob } },
+                { space: 'not-lain/background-removal', endpoint: '/png', payload: { f: blob } }
+            ];
+
+            for (const provider of aiProviders) {
+                try {
+                    console.log(`[BackgroundRemoval] Trying HuggingFace AI space: ${provider.space}...`);
+                    const gradioCall = (async () => {
+                        const client = await Client.connect(provider.space, clientOptions);
+                        return await client.predict(provider.endpoint, provider.payload);
+                    })();
+                    
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error(`Timeout after 15s on ${provider.space}`)), 15000)
+                    );
+                    
+                    const result = await Promise.race([gradioCall, timeoutPromise]);
+                    
+                    let imageUrl = null;
+                    if (Array.isArray(result?.data)) {
+                        if (result.data[1]?.url) {
+                            imageUrl = result.data[1].url;
+                        } else if (result.data[0]?.url) {
+                            imageUrl = result.data[0].url;
+                        } else if (Array.isArray(result.data[0]) && result.data[0][1]?.url) {
+                            imageUrl = result.data[0][1].url;
+                        } else if (Array.isArray(result.data[0]) && result.data[0][0]?.url) {
+                            imageUrl = result.data[0][0].url;
+                        }
+                    } else if (result?.data?.url) {
+                        imageUrl = result.data.url;
+                    }
+                    
+                    if (imageUrl) {
+                        const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
+                        cutoutBuffer = await sharp(Buffer.from(imgResp.data))
+                            .ensureAlpha()
+                            .png({ quality: 100 })
+                            .toBuffer();
+                        console.log(`[BackgroundRemoval] ${provider.space} SUCCESS (${cutoutBuffer.length} bytes)!`);
+                        break; // Successfully got clean transparent cutout!
+                    }
+                } catch(spaceErr) {
+                    console.warn(`[BackgroundRemoval] Notice from ${provider.space}: ${spaceErr.message}`);
                 }
-            } else if (result?.data?.url) {
-                imageUrl = result.data.url;
-            }
-            
-            if (imageUrl) {
-                const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
-                // Always ensure standard PNG with alpha channel
-                cutoutBuffer = await sharp(Buffer.from(imgResp.data))
-                    .ensureAlpha()
-                    .png({ quality: 100 })
-                    .toBuffer();
-                console.log(`[BackgroundRemoval] HuggingFace BRIA-RMBG-2.0 SUCCESS (${cutoutBuffer.length} bytes)!`);
-            } else {
-                throw new Error("No image URL in Gradio response");
             }
         } catch(gradioErr) {
-            console.warn(`[BackgroundRemoval] HuggingFace Gradio notice: ${gradioErr.message}`);
+            console.warn(`[BackgroundRemoval] HuggingFace Gradio outer notice: ${gradioErr.message}`);
         }
     }
 
