@@ -244,7 +244,7 @@
                     <small class="text-secondary fw-bold">BILLING RATE PER PHOTO</small>
                     <div class="d-flex align-items-center mt-2 mb-1">
                         <span class="fs-4 fw-bold me-1 text-warning">₹</span>
-                        <input type="number" id="inputPhotoRate" value="50" min="0" step="1" class="form-control bg-dark text-warning border-secondary fw-bold fs-5 p-1" style="width:110px;" oninput="calculateBilling()">
+                        <input type="number" id="inputPhotoRate" value="0.80" min="0" step="0.05" class="form-control bg-dark text-warning border-secondary fw-bold fs-5 p-1" style="width:110px;" oninput="calculateBilling()">
                     </div>
                     <small class="text-secondary">Custom rate to charge client</small>
                 </div>
@@ -1208,7 +1208,7 @@ function renderFilteredPhotos() {
 
 function calculateBilling(customCount) {
     const rateInput = document.getElementById('inputPhotoRate');
-    const rate = parseFloat(rateInput ? rateInput.value : 50) || 0;
+    const rate = parseFloat(rateInput ? rateInput.value : 0.80) || 0;
     
     let count = customCount;
     if (count === undefined) {
@@ -1218,9 +1218,12 @@ function calculateBilling(customCount) {
         count = filtered.length;
     }
 
-    const total = Math.round(count * rate);
+    const totalNum = count * rate;
+    const total = totalNum.toFixed(2);
     const amountEl = document.getElementById('statBillableAmount');
-    if (amountEl) amountEl.innerText = total.toLocaleString('en-IN');
+    if (amountEl) {
+        amountEl.innerText = parseFloat(total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
     return { count, rate, total };
 }
 

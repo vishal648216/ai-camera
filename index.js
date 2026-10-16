@@ -807,7 +807,7 @@ app.get('/api/admin/stats', async (req, res) => {
         totalUsers: regList.length,
         eventsCount: evList.length,
         registrations: regList.slice(0, 15),
-        totalRevenue: (regList.length * 5.0).toFixed(2),
+        totalRevenue: (regList.length * 0.80).toFixed(2),
         popularThemes: dbStore.configs?.analytics?.popularThemes || {}
     });
 });
@@ -1014,8 +1014,8 @@ app.get('/api/admin/events/:id/invoice', async (req, res) => {
     const ev = evs.find(e => e.id === req.params.id) || { id: req.params.id, name: 'Event', ownerName: 'Client' };
     const regList = await safeGetRegistrations();
     const count = (req.params.id === 'all') ? regList.length : regList.filter(r => r.eventId === req.params.id).length;
-    const rate = parseFloat(req.query.rate) || 5.0;
-    res.json({ event: ev, totalGenerations: count, costPerGeneration: rate, totalAmount: count * rate, invoiceDate: new Date().toISOString() });
+    const rate = parseFloat(req.query.rate) || 0.80;
+    res.json({ event: ev, totalGenerations: count, costPerGeneration: rate, totalAmount: (count * rate).toFixed(2), invoiceDate: new Date().toISOString() });
 });
 
 // App Templates (INJECT EVENT BANNER IF ACTIVE!)
