@@ -479,47 +479,66 @@ async function safeDeleteEvent(id) {
 
 async function safeDeleteRegistration(id) {
     if (!id) return false;
+    const targetId = String(id).trim();
     let found = null;
+    
+    // 1. Delete from memory/dbStore
     if (dbStore.registrations) {
-        const idx = dbStore.registrations.findIndex(r => r.id === id || r._id === id);
+        const idx = dbStore.registrations.findIndex(r => String(r.id) === targetId || String(r._id) === targetId);
         if (idx >= 0) {
             found = dbStore.registrations[idx];
             dbStore.registrations.splice(idx, 1);
             saveDbStore();
         }
     }
+
+    // 2. Delete from MongoDB Atlas safely without CastError on ObjectId
     try {
         if (mongoose.connection.readyState === 1) {
-            if (!found) found = await Registration.findOne({ $or: [{ id: id }, { _id: id }] }).lean();
-            await Registration.deleteMany({ $or: [{ id: id }, { _id: id }] });
+            const conditions = [{ id: targetId }];
+            if (mongoose.Types.ObjectId.isValid(targetId) && targetId.length === 24) {
+                conditions.push({ _id: new mongoose.Types.ObjectId(targetId) });
+            }
+            const query = (conditions.length > 1) ? { $or: conditions } : conditions[0];
+            
+            if (!found) {
+                found = await Registration.findOne(query).lean();
+            }
+            await Registration.deleteMany(query);
+            console.log(`[Delete] Deleted registration ${targetId} from MongoDB`);
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("MongoDB safeDeleteRegistration error:", e.message);
+    }
 
-    // Cleanup disk files if exist
+    // 3. Cleanup files on disk
     try {
-        if (found && found.resultUrl) {
-            const rel = found.resultUrl.replace(/^\//, '');
-            const local = path.join(__dirname, rel);
-            if (fs.existsSync(local)) fs.unlinkSync(local);
+        if (found) {
+            if (found.resultUrl) {
+                const local = path.join(__dirname, found.resultUrl.replace(/^\//, ''));
+                if (fs.existsSync(local)) fs.unlinkSync(local);
+            }
+            if (found.selfieUrl) {
+                const local = path.join(__dirname, found.selfieUrl.replace(/^\//, ''));
+                if (fs.existsSync(local)) fs.unlinkSync(local);
+            }
         }
-        if (found && found.selfieUrl) {
-            const rel = found.selfieUrl.replace(/^\//, '');
-            const local = path.join(__dirname, rel);
-            if (fs.existsSync(local)) fs.unlinkSync(local);
-        }
-    } catch (e) {}
+    } catch (e) {
+        console.warn("Notice unlinking files:", e.message);
+    }
     return true;
 }
 
 async function safeDeleteRegistrations(ids) {
     if (!Array.isArray(ids) || ids.length === 0) return 0;
-    const toDeleteIds = ids.map(x => String(x));
+    const toDeleteIds = ids.map(x => String(x).trim()).filter(Boolean);
     let deletedCount = 0;
     let itemsToClean = [];
 
+    // 1. Delete from memory/dbStore
     if (dbStore.registrations) {
         dbStore.registrations = dbStore.registrations.filter(r => {
-            const match = toDeleteIds.includes(String(r.id)) || toDeleteIds.includes(String(r._id));
+            const match = toDeleteIds.includes(String(r.id)) || (r._id && toDeleteIds.includes(String(r._id)));
             if (match) {
                 deletedCount++;
                 itemsToClean.push(r);
@@ -530,18 +549,34 @@ async function safeDeleteRegistrations(ids) {
         saveDbStore();
     }
 
+    // 2. Delete from MongoDB Atlas
     try {
         if (mongoose.connection.readyState === 1) {
-            const dbItems = await Registration.find({ $or: [{ id: { $in: toDeleteIds } }, { _id: { $in: toDeleteIds } }] }).lean();
+            const objectIds = toDeleteIds
+                .filter(x => mongoose.Types.ObjectId.isValid(x) && x.length === 24)
+                .map(x => new mongoose.Types.ObjectId(x));
+
+            const orConditions = [{ id: { $in: toDeleteIds } }];
+            if (objectIds.length > 0) {
+                orConditions.push({ _id: { $in: objectIds } });
+            }
+            const query = (orConditions.length > 1) ? { $or: orConditions } : orConditions[0];
+
+            const dbItems = await Registration.find(query).lean();
             if (dbItems && dbItems.length > 0) {
                 itemsToClean.push(...dbItems);
             }
-            const res = await Registration.deleteMany({ $or: [{ id: { $in: toDeleteIds } }, { _id: { $in: toDeleteIds } }] });
-            if (res && res.deletedCount) deletedCount = Math.max(deletedCount, res.deletedCount);
+            const res = await Registration.deleteMany(query);
+            if (res && res.deletedCount) {
+                deletedCount = Math.max(deletedCount, res.deletedCount);
+                console.log(`[BulkDelete] Deleted ${res.deletedCount} registrations from MongoDB`);
+            }
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("MongoDB safeDeleteRegistrations error:", e.message);
+    }
 
-    // Cleanup files on disk
+    // 3. Cleanup files on disk
     itemsToClean.forEach(item => {
         try {
             if (item.resultUrl) {
@@ -560,14 +595,57 @@ async function safeDeleteRegistrations(ids) {
 
 async function safeDeleteRegistrationsByEvent(eventId) {
     if (!eventId) return 0;
-    let leads = await safeGetRegistrations();
-    let toDelete = [];
-    if (eventId === 'all') {
-        toDelete = leads.map(l => l.id);
-    } else {
-        toDelete = leads.filter(l => l.eventId === eventId).map(l => l.id);
+    let deletedCount = 0;
+    let itemsToClean = [];
+    const isAll = (eventId === 'all');
+    const filter = isAll ? {} : { eventId: eventId };
+
+    // 1. Delete from memory/dbStore
+    if (dbStore.registrations) {
+        dbStore.registrations = dbStore.registrations.filter(r => {
+            const match = isAll || (r.eventId || 'default') === eventId;
+            if (match) {
+                deletedCount++;
+                itemsToClean.push(r);
+                return false;
+            }
+            return true;
+        });
+        saveDbStore();
     }
-    return await safeDeleteRegistrations(toDelete);
+
+    // 2. Delete from MongoDB Atlas
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const dbItems = await Registration.find(filter).lean();
+            if (dbItems && dbItems.length > 0) {
+                itemsToClean.push(...dbItems);
+            }
+            const res = await Registration.deleteMany(filter);
+            if (res && res.deletedCount) {
+                deletedCount = Math.max(deletedCount, res.deletedCount);
+                console.log(`[DeleteEventPhotos] Deleted ${res.deletedCount} registrations for event ${eventId}`);
+            }
+        }
+    } catch (e) {
+        console.error("MongoDB safeDeleteRegistrationsByEvent error:", e.message);
+    }
+
+    // 3. Cleanup disk files
+    itemsToClean.forEach(item => {
+        try {
+            if (item.resultUrl) {
+                const local = path.join(__dirname, item.resultUrl.replace(/^\//, ''));
+                if (fs.existsSync(local)) fs.unlinkSync(local);
+            }
+            if (item.selfieUrl) {
+                const local = path.join(__dirname, item.selfieUrl.replace(/^\//, ''));
+                if (fs.existsSync(local)) fs.unlinkSync(local);
+            }
+        } catch(e) {}
+    });
+
+    return deletedCount;
 }
 
 async function safeDeleteTemplate(id) {

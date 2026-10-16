@@ -706,6 +706,7 @@ function renderDashboardPage() {
 
     tbody.innerHTML = pageItems.map((r, idx) => {
         const seqNum = startIdx + idx + 1; // 1, 2, 3... in sequence
+        const leadId = r.id || r._id || '';
         const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '');
         const selfieUrl = r.selfieUrl || '';
         const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString() : '--';
@@ -737,11 +738,11 @@ function renderDashboardPage() {
             <td class="text-end pe-3">
                 <div class="d-flex align-items-center justify-content-end gap-2">
                     ${imgUrl 
-                        ? `<img src="${imgUrl}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${r.id}')" title="Zoom Photo">
-                           <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info" title="View"><i class="fas fa-eye"></i></button>
+                        ? `<img src="${imgUrl}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${leadId}')" title="Zoom Photo">
+                           <button onclick="openPhotoZoom('${leadId}')" class="btn btn-sm btn-outline-info" title="View"><i class="fas fa-eye"></i></button>
                            <a href="${imgUrl}" download="photo_${seqNum}.png" class="btn btn-sm btn-outline-success" title="Download"><i class="fas fa-download"></i></a>
-                           <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete Photo"><i class="fas fa-trash-alt"></i></button>`
-                        : `<button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete Lead"><i class="fas fa-trash-alt"></i></button>`}
+                           <button onclick="deleteSingleLead('${leadId}')" class="btn btn-sm btn-outline-danger" title="Delete Photo"><i class="fas fa-trash-alt"></i></button>`
+                        : `<button onclick="deleteSingleLead('${leadId}')" class="btn btn-sm btn-outline-danger" title="Delete Lead"><i class="fas fa-trash-alt"></i></button>`}
                 </div>
             </td>
         </tr>`;
@@ -1372,19 +1373,20 @@ function renderFilteredPhotos() {
                     </div>`;
             } else {
                 gridContainer.innerHTML = pageItems.map(r => {
+                    const leadId = r.id || r._id || '';
                     const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '/uploads/templates/default.png');
                     const themeName = r.personaDescription || r.themeName || 'Event Theme';
                     const eventName = r.eventName || (r.eventId === 'default' ? 'General Event' : r.eventId || 'Event');
                     const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '--';
 
                     return `
-                    <div class="col-md-3 col-sm-6" id="lead-card-${r.id}">
+                    <div class="col-md-3 col-sm-6" id="lead-card-${leadId}">
                         <div class="photo-card h-100">
                             <div class="photo-check-wrap">
-                                <input type="checkbox" class="form-check-input photo-select-checkbox" value="${r.id}" onchange="onPhotoCheckboxChange('${r.id}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
+                                <input type="checkbox" class="form-check-input photo-select-checkbox" value="${leadId}" onchange="onPhotoCheckboxChange('${leadId}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
                             </div>
 
-                            <div class="photo-card-img-wrap" onclick="openPhotoZoom('${r.id}')">
+                            <div class="photo-card-img-wrap" onclick="openPhotoZoom('${leadId}')">
                                 <img src="${imgUrl}" alt="AI Photo" loading="lazy" decoding="async" onerror="this.src='/uploads/templates/default.png';">
                                 <div class="photo-card-overlay">
                                     <span class="btn btn-sm btn-info rounded-circle shadow"><i class="fas fa-search-plus"></i></span>
@@ -1404,16 +1406,16 @@ function renderFilteredPhotos() {
                                 </small>
 
                                 <div class="d-flex align-items-center gap-1 mt-2 pt-2 border-top border-secondary border-opacity-10">
-                                    <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info flex-grow-1" style="font-size:12px;">
+                                    <button onclick="openPhotoZoom('${leadId}')" class="btn btn-sm btn-outline-info flex-grow-1" style="font-size:12px;">
                                         <i class="fas fa-eye me-1"></i>View
                                     </button>
                                     <a href="${imgUrl}" download="${(r.name||'photo').replace(/\s+/g,'_')}.png" class="btn btn-sm btn-outline-success" title="Download High-Res">
                                         <i class="fas fa-download"></i>
                                     </a>
-                                    <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary" title="Live QR Share Page">
+                                    <a href="${API}/share/${leadId}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary" title="Live QR Share Page">
                                         <i class="fas fa-qrcode"></i>
                                     </a>
-                                    <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete Photo">
+                                    <button onclick="event.stopPropagation(); deleteSingleLead('${leadId}')" class="btn btn-sm btn-outline-danger" title="Delete Photo">
                                         <i class="fas fa-trash-alt"></i>
                                     </button>
                                 </div>
@@ -1431,18 +1433,19 @@ function renderFilteredPhotos() {
                 tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary py-4">No photos recorded for this event yet.</td></tr>';
             } else {
                 tableBody.innerHTML = pageItems.map(r => {
+                    const leadId = r.id || r._id || '';
                     const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '/uploads/templates/default.png');
                     const eventName = r.eventName || (r.eventId === 'default' ? 'General Event' : r.eventId || '--');
                     const themeName = r.personaDescription || r.themeName || 'Theme';
                     const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString() : '--';
 
                     return `
-                    <tr id="lead-row-${r.id}">
+                    <tr id="lead-row-${leadId}">
                         <td>
-                            <input type="checkbox" class="form-check-input photo-select-checkbox" value="${r.id}" onchange="onPhotoCheckboxChange('${r.id}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
+                            <input type="checkbox" class="form-check-input photo-select-checkbox" value="${leadId}" onchange="onPhotoCheckboxChange('${leadId}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
                         </td>
                         <td>
-                            <img src="${imgUrl}" loading="lazy" decoding="async" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${r.id}')" alt="Photo">
+                            <img src="${imgUrl}" loading="lazy" decoding="async" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${leadId}')" alt="Photo">
                         </td>
                         <td>
                             <b>${r.name || 'Anonymous'}</b>
@@ -1458,10 +1461,10 @@ function renderFilteredPhotos() {
                         </td>
                         <td><small class="text-secondary">${timeStr}</small></td>
                         <td class="text-end">
-                            <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info me-1" title="View"><i class="fas fa-eye"></i></button>
+                            <button onclick="openPhotoZoom('${leadId}')" class="btn btn-sm btn-outline-info me-1" title="View"><i class="fas fa-eye"></i></button>
                             <a href="${imgUrl}" download="${(r.name||'photo').replace(/\s+/g,'_')}.png" class="btn btn-sm btn-outline-success me-1" title="Download"><i class="fas fa-download"></i></a>
-                            <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary me-1" title="QR Link"><i class="fas fa-qrcode"></i></a>
-                            <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                            <a href="${API}/share/${leadId}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary me-1" title="QR Link"><i class="fas fa-qrcode"></i></a>
+                            <button onclick="event.stopPropagation(); deleteSingleLead('${leadId}')" class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash-alt"></i></button>
                         </td>
                     </tr>`;
                 }).join('');
@@ -1625,21 +1628,22 @@ async function executeBulkDelete() {
 }
 
 async function deleteSingleLead(id) {
+    if (!id) return alert('Photo ID is missing.');
     if (!confirm('Are you sure you want to permanently delete this photo?')) return;
     try {
-        const res = await fetch(`${API}/api/admin/leads/${id}`, { method: 'DELETE' });
+        const res = await fetch(`${API}/api/admin/leads/${encodeURIComponent(id)}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
             _selectedPhotoIds.delete(id);
             
             // Remove from Dashboard list & re-render
-            _dashboardLeads = _dashboardLeads.filter(x => x.id !== id);
-            _filteredDashboardLeads = _filteredDashboardLeads.filter(x => x.id !== id);
+            _dashboardLeads = _dashboardLeads.filter(x => String(x.id) !== String(id) && String(x._id) !== String(id));
+            _filteredDashboardLeads = _filteredDashboardLeads.filter(x => String(x.id) !== String(id) && String(x._id) !== String(id));
             renderDashboardPage();
 
             // Remove from Photos & Billing list if active
             if (_allLeads && _allLeads.length > 0) {
-                _allLeads = _allLeads.filter(x => x.id !== id);
+                _allLeads = _allLeads.filter(x => String(x.id) !== String(id) && String(x._id) !== String(id));
                 renderFilteredPhotos();
             }
 
@@ -1651,6 +1655,7 @@ async function deleteSingleLead(id) {
                 const revEl = document.getElementById('statRevenue');
                 if (revEl) revEl.innerText = (currentCount * 0.80).toFixed(2);
             }
+            alert('✓ Photo deleted successfully!');
         } else {
             alert('Failed to delete photo: ' + (data.error || 'Unknown error'));
         }
