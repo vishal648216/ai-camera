@@ -739,8 +739,9 @@ function renderDashboardPage() {
                     ${imgUrl 
                         ? `<img src="${imgUrl}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${r.id}')" title="Zoom Photo">
                            <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info" title="View"><i class="fas fa-eye"></i></button>
-                           <a href="${imgUrl}" download="photo_${seqNum}.png" class="btn btn-sm btn-outline-success" title="Download"><i class="fas fa-download"></i></a>`
-                        : '<span class="text-secondary small">Processing...</span>'}
+                           <a href="${imgUrl}" download="photo_${seqNum}.png" class="btn btn-sm btn-outline-success" title="Download"><i class="fas fa-download"></i></a>
+                           <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete Photo"><i class="fas fa-trash-alt"></i></button>`
+                        : `<button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete Lead"><i class="fas fa-trash-alt"></i></button>`}
                 </div>
             </td>
         </tr>`;
@@ -1630,7 +1631,26 @@ async function deleteSingleLead(id) {
         const data = await res.json();
         if (data.success) {
             _selectedPhotoIds.delete(id);
-            await fetchLeads();
+            
+            // Remove from Dashboard list & re-render
+            _dashboardLeads = _dashboardLeads.filter(x => x.id !== id);
+            _filteredDashboardLeads = _filteredDashboardLeads.filter(x => x.id !== id);
+            renderDashboardPage();
+
+            // Remove from Photos & Billing list if active
+            if (_allLeads && _allLeads.length > 0) {
+                _allLeads = _allLeads.filter(x => x.id !== id);
+                renderFilteredPhotos();
+            }
+
+            // Immediately update Total Leads and Est. Revenue stats
+            const totalEl = document.getElementById('statTotalUsers');
+            if (totalEl) {
+                const currentCount = Math.max(0, (parseInt(totalEl.innerText) || 0) - 1);
+                totalEl.innerText = currentCount;
+                const revEl = document.getElementById('statRevenue');
+                if (revEl) revEl.innerText = (currentCount * 0.80).toFixed(2);
+            }
         } else {
             alert('Failed to delete photo: ' + (data.error || 'Unknown error'));
         }
@@ -1653,6 +1673,7 @@ async function deleteCurrentEventPhotos() {
         if (data.success) {
             _selectedPhotoIds.clear();
             await fetchLeads();
+            refreshStats();
             alert(`✓ Successfully deleted ${data.deletedCount} photos.`);
         } else {
             alert('Error deleting event photos: ' + (data.error || 'Failed'));
@@ -1663,7 +1684,7 @@ async function deleteCurrentEventPhotos() {
 }
 
 function openPhotoZoom(id) {
-    const item = _allLeads.find(x => x.id === id);
+    const item = (_allLeads && _allLeads.find(x => x.id === id)) || (_dashboardLeads && _dashboardLeads.find(x => x.id === id));
     if (!item) return;
 
     _currentZoomId = id;
