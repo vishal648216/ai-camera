@@ -806,7 +806,7 @@ app.get('/api/admin/stats', async (req, res) => {
     res.json({
         totalUsers: regList.length,
         eventsCount: evList.length,
-        registrations: regList.slice(0, 15),
+        registrations: regList,
         totalRevenue: (regList.length * 0.80).toFixed(2),
         popularThemes: dbStore.configs?.analytics?.popularThemes || {}
     });
