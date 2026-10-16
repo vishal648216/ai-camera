@@ -196,6 +196,7 @@
                     <div class="d-flex align-items-center gap-1 ms-2">
                         <span class="text-secondary small">Go:</span>
                         <input type="number" id="dashboardJumpInput" min="1" class="form-control form-control-sm bg-dark text-info border-secondary text-center px-1" style="width: 58px;" placeholder="Pg" onkeydown="if(event.key==='Enter') jumpToDashboardPage(this.value)">
+                        <button type="button" class="btn btn-sm btn-outline-info px-2" id="btnDashboardJump" onclick="jumpToDashboardPage(document.getElementById('dashboardJumpInput').value)">Go</button>
                     </div>
                 </div>
             </div>
@@ -567,6 +568,35 @@
     </div>
 </div>
 
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-white" style="background: rgba(18, 18, 28, 0.96); backdrop-filter: blur(16px); border: 1px solid rgba(220, 53, 69, 0.4); border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+            <div class="modal-header border-bottom border-secondary border-opacity-25 pb-3">
+                <h5 class="modal-title text-danger fw-bold d-flex align-items-center gap-2">
+                    <i class="fas fa-trash-alt"></i> Delete Lead / Photo
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <div class="mb-3">
+                    <div style="width: 60px; height: 60px; border-radius: 50%; background: rgba(220, 53, 69, 0.15); display: inline-flex; align-items: center; justify-content: center;">
+                        <i class="fas fa-exclamation-triangle text-danger fa-2x"></i>
+                    </div>
+                </div>
+                <h6 class="fw-bold text-white mb-2 fs-5">Confirm Permanent Deletion?</h6>
+                <p class="text-secondary small mb-0">This lead record and its generated AI photo will be permanently deleted from the database and storage.</p>
+            </div>
+            <div class="modal-footer border-top border-secondary border-opacity-25 p-3 d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="btnConfirmDeleteLead" class="btn btn-danger btn-sm px-4 fw-bold">
+                    <i class="fas fa-trash-alt me-1"></i>Delete Permanently
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const API = window.location.origin;
@@ -639,6 +669,12 @@ async function refreshStats() {
             _filteredDashboardLeads = [..._dashboardLeads];
         }
         
+        const urlParams = new URLSearchParams(window.location.search);
+        const pParam = parseInt(urlParams.get('page'), 10);
+        if (!isNaN(pParam) && pParam > 0) {
+            _dashboardCurrentPage = pParam;
+        }
+
         renderDashboardPage();
     } catch(e) {
         console.error('Stats error:', e);
@@ -677,6 +713,8 @@ function jumpToDashboardPage(val) {
         goToDashboardPage(p);
     }
 }
+window.goToDashboardPage = goToDashboardPage;
+window.jumpToDashboardPage = jumpToDashboardPage;
 
 function renderDashboardPage() {
     const totalItems = _filteredDashboardLeads.length;
@@ -712,7 +750,7 @@ function renderDashboardPage() {
         const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString() : '--';
         const eventName = r.eventName || (r.eventId && r.eventId !== 'default' ? r.eventId : 'General Event');
 
-        return `<tr>
+        return `<tr id="lead-row-${leadId}">
             <td class="ps-3 text-center">
                 <span class="badge bg-secondary bg-opacity-25 text-info font-monospace fs-6 px-2 py-1">${seqNum}</span>
             </td>
@@ -739,10 +777,10 @@ function renderDashboardPage() {
                 <div class="d-flex align-items-center justify-content-end gap-2">
                     ${imgUrl 
                         ? `<img src="${imgUrl}" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${leadId}')" title="Zoom Photo">
-                           <button onclick="openPhotoZoom('${leadId}')" class="btn btn-sm btn-outline-info" title="View"><i class="fas fa-eye"></i></button>
+                           <button type="button" onclick="openPhotoZoom('${leadId}')" class="btn btn-sm btn-outline-info" title="View"><i class="fas fa-eye"></i></button>
                            <a href="${imgUrl}" download="photo_${seqNum}.png" class="btn btn-sm btn-outline-success" title="Download"><i class="fas fa-download"></i></a>
-                           <button onclick="deleteSingleLead('${leadId}')" class="btn btn-sm btn-outline-danger" title="Delete Photo"><i class="fas fa-trash-alt"></i></button>`
-                        : `<button onclick="deleteSingleLead('${leadId}')" class="btn btn-sm btn-outline-danger" title="Delete Lead"><i class="fas fa-trash-alt"></i></button>`}
+                           <button type="button" onclick="event.stopPropagation(); deleteSingleLead('${leadId}')" class="btn btn-sm btn-outline-danger btn-delete-lead" title="Delete Photo"><i class="fas fa-trash-alt"></i></button>`
+                        : `<button type="button" onclick="event.stopPropagation(); deleteSingleLead('${leadId}')" class="btn btn-sm btn-outline-danger btn-delete-lead" title="Delete Lead"><i class="fas fa-trash-alt"></i></button>`}
                 </div>
             </td>
         </tr>`;
@@ -1289,6 +1327,29 @@ let _photosCurrentPage = 1;
 const PHOTOS_GRID_PAGE_SIZE = 24;
 const PHOTOS_TABLE_PAGE_SIZE = 20;
 
+function setPhotosViewMode(mode) {
+    _photosViewMode = mode;
+    const btnGrid = document.getElementById('btnViewGrid');
+    const btnTable = document.getElementById('btnViewTable');
+    const gridView = document.getElementById('photosGridView');
+    const tableView = document.getElementById('photosTableView');
+
+    if (mode === 'grid') {
+        if (btnGrid) btnGrid.classList.add('active');
+        if (btnTable) btnTable.classList.remove('active');
+        if (gridView) gridView.classList.remove('d-none');
+        if (tableView) tableView.classList.add('d-none');
+    } else {
+        if (btnGrid) btnGrid.classList.remove('active');
+        if (btnTable) btnTable.classList.add('active');
+        if (gridView) gridView.classList.add('d-none');
+        if (tableView) tableView.classList.remove('d-none');
+    }
+    _photosCurrentPage = 1;
+    renderFilteredPhotos();
+}
+window.setPhotosViewMode = setPhotosViewMode;
+
 function onEventFilterChange() {
     const sel = document.getElementById('filterEventSelect');
     _currentEventFilter = sel.value;
@@ -1627,23 +1688,80 @@ async function executeBulkDelete() {
     }
 }
 
-async function deleteSingleLead(id) {
-    if (!id) return alert('Photo ID is missing.');
-    if (!confirm('Are you sure you want to permanently delete this photo?')) return;
+function showAdminToast(msg, type = 'success') {
+    const existing = document.getElementById('adminLiveToast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'adminLiveToast';
+    toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed top-0 end-0 m-3 shadow-lg d-flex align-items-center gap-2 border-0`;
+    toast.style.zIndex = '999999';
+    toast.style.borderRadius = '10px';
+    toast.style.minWidth = '280px';
+    toast.style.boxShadow = '0 8px 30px rgba(0,0,0,0.5)';
+    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-triangle'} fs-5"></i> <div class="fw-bold">${msg}</div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.transition = 'opacity 0.4s ease';
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 400);
+    }, 3500);
+}
+window.showAdminToast = showAdminToast;
+
+let _leadToDeleteId = null;
+
+function deleteSingleLead(id, skipConfirm = false) {
+    if (!id) return showAdminToast('Photo ID is missing.', 'danger');
+    _leadToDeleteId = id;
+    
+    if (skipConfirm) {
+        return executeDeleteLead(id);
+    }
+
+    const modalEl = document.getElementById('deleteConfirmModal');
+    if (modalEl && window.bootstrap && window.bootstrap.Modal) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    } else {
+        if (confirm('Are you sure you want to permanently delete this photo?')) {
+            executeDeleteLead(id);
+        }
+    }
+}
+window.deleteSingleLead = deleteSingleLead;
+
+async function executeDeleteLead(id) {
+    const targetId = id || _leadToDeleteId;
+    if (!targetId) return;
+
+    // Hide confirmation modal if open
+    const modalEl = document.getElementById('deleteConfirmModal');
+    if (modalEl && window.bootstrap && window.bootstrap.Modal) {
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+    }
+
+    const confirmBtn = document.getElementById('btnConfirmDeleteLead');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Deleting...';
+    }
+
     try {
-        const res = await fetch(`${API}/api/admin/leads/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const res = await fetch(`${API}/api/admin/leads/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
         const data = await res.json();
         if (data.success) {
-            _selectedPhotoIds.delete(id);
+            _selectedPhotoIds.delete(targetId);
             
             // Remove from Dashboard list & re-render
-            _dashboardLeads = _dashboardLeads.filter(x => String(x.id) !== String(id) && String(x._id) !== String(id));
-            _filteredDashboardLeads = _filteredDashboardLeads.filter(x => String(x.id) !== String(id) && String(x._id) !== String(id));
+            _dashboardLeads = _dashboardLeads.filter(x => String(x.id) !== String(targetId) && String(x._id) !== String(targetId));
+            _filteredDashboardLeads = _filteredDashboardLeads.filter(x => String(x.id) !== String(targetId) && String(x._id) !== String(targetId));
             renderDashboardPage();
 
             // Remove from Photos & Billing list if active
             if (_allLeads && _allLeads.length > 0) {
-                _allLeads = _allLeads.filter(x => String(x.id) !== String(id) && String(x._id) !== String(id));
+                _allLeads = _allLeads.filter(x => String(x.id) !== String(targetId) && String(x._id) !== String(targetId));
                 renderFilteredPhotos();
             }
 
@@ -1655,14 +1773,29 @@ async function deleteSingleLead(id) {
                 const revEl = document.getElementById('statRevenue');
                 if (revEl) revEl.innerText = (currentCount * 0.80).toFixed(2);
             }
-            alert('✓ Photo deleted successfully!');
+            showAdminToast('✓ Photo deleted successfully!', 'success');
         } else {
-            alert('Failed to delete photo: ' + (data.error || 'Unknown error'));
+            showAdminToast('Failed to delete photo: ' + (data.error || 'Unknown error'), 'danger');
         }
     } catch(err) {
-        alert('Error deleting photo: ' + err.message);
+        showAdminToast('Error deleting photo: ' + err.message, 'danger');
+    } finally {
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = '<i class="fas fa-trash-alt me-1"></i>Delete Permanently';
+        }
+        _leadToDeleteId = null;
     }
 }
+window.executeDeleteLead = executeDeleteLead;
+
+// Attach click listener for modal delete button
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btnConfirmDeleteLead');
+    if (btn) {
+        btn.onclick = () => executeDeleteLead(_leadToDeleteId);
+    }
+});
 
 async function deleteCurrentEventPhotos() {
     const eventName = document.getElementById('statSelectedEventName').innerText;
@@ -1889,6 +2022,10 @@ document.getElementById('addEventModal').addEventListener('shown.bs.modal', () =
 });
 
 // ===== INIT =====
+const btnConfirmDel = document.getElementById('btnConfirmDeleteLead');
+if (btnConfirmDel) {
+    btnConfirmDel.onclick = () => executeDeleteLead(_leadToDeleteId);
+}
 checkDbStatus();
 refreshStats();
 </script>
