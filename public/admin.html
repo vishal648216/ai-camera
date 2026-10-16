@@ -351,6 +351,18 @@
                     <tr><td colspan="7" class="text-center text-secondary py-4">Loading leads...</td></tr>
                 </tbody>
             </table>
+        <!-- Photos Pagination Bar (Super-Smooth 24/20 per page) -->
+        <div class="glass-card p-3 mb-4 d-flex flex-wrap justify-content-between align-items-center gap-2" id="photosPaginationWrap">
+            <div class="text-secondary small" id="photosPageSummary">Showing 0 of 0 photos</div>
+            <div class="d-flex align-items-center gap-2">
+                <nav aria-label="Photos pagination">
+                    <ul class="pagination pagination-sm mb-0" id="photosPagination"></ul>
+                </nav>
+                <div class="d-flex align-items-center gap-1 ms-2">
+                    <span class="text-secondary small">Go:</span>
+                    <input type="number" id="photosJumpInput" min="1" class="form-control form-control-sm bg-dark text-info border-secondary text-center px-1" style="width: 58px;" placeholder="Pg" onkeydown="if(event.key==='Enter') jumpToPhotosPage(this.value)">
+                </div>
+            </div>
         </div>
     </section>
 
@@ -1270,10 +1282,36 @@ function populateEventFilterDropdown() {
     }
 }
 
+// ===== PHOTOS PAGINATION & PERFORMANCE OPTIMIZATION =====
+let _photosCurrentPage = 1;
+const PHOTOS_GRID_PAGE_SIZE = 24;
+const PHOTOS_TABLE_PAGE_SIZE = 20;
+
 function onEventFilterChange() {
     const sel = document.getElementById('filterEventSelect');
     _currentEventFilter = sel.value;
+    _photosCurrentPage = 1;
     renderFilteredPhotos();
+}
+
+function goToPhotosPage(page) {
+    const filtered = (_currentEventFilter === 'all') 
+        ? _allLeads 
+        : _allLeads.filter(r => (r.eventId || 'default') === _currentEventFilter);
+    const pageSize = (_photosViewMode === 'grid') ? PHOTOS_GRID_PAGE_SIZE : PHOTOS_TABLE_PAGE_SIZE;
+    const totalPages = Math.ceil(filtered.length / pageSize) || 1;
+    if (page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+    _photosCurrentPage = page;
+    renderFilteredPhotos();
+    // Smooth scroll up to toolbar
+    const toolbar = document.getElementById('filterEventSelect');
+    if (toolbar) toolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function jumpToPhotosPage(val) {
+    const p = parseInt(val, 10);
+    if (!isNaN(p)) goToPhotosPage(p);
 }
 
 function renderFilteredPhotos() {
@@ -1306,114 +1344,198 @@ function renderFilteredPhotos() {
 
     calculateBilling(filtered.length);
 
-    // Render 1: Gallery Grid View
+    // Determine page size and total pages based on current mode
+    const pageSize = (_photosViewMode === 'grid') ? PHOTOS_GRID_PAGE_SIZE : PHOTOS_TABLE_PAGE_SIZE;
+    const totalItems = filtered.length;
+    const totalPages = Math.ceil(totalItems / pageSize) || 1;
+    if (_photosCurrentPage > totalPages) _photosCurrentPage = totalPages;
+    if (_photosCurrentPage < 1) _photosCurrentPage = 1;
+
+    const startIdx = (_photosCurrentPage - 1) * pageSize;
+    const endIdx = Math.min(startIdx + pageSize, totalItems);
+    const pageItems = filtered.slice(startIdx, endIdx);
+
     const gridContainer = document.getElementById('photosGridView');
-    if (gridContainer) {
-        if (!filtered.length) {
-            gridContainer.innerHTML = `
-                <div class="col-12 text-center text-secondary py-5">
-                    <i class="fas fa-camera fa-3x mb-3 text-secondary opacity-50"></i>
-                    <h5 class="text-white">No photos captured for this event yet</h5>
-                    <p class="small">Photos taken on camera booth will show up here automatically.</p>
-                </div>
-            `;
-        } else {
-            gridContainer.innerHTML = filtered.map(r => {
-                const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '/uploads/templates/default.png');
-                const themeName = r.personaDescription || r.themeName || 'Event Theme';
-                const eventName = r.eventName || (r.eventId === 'default' ? 'General Event' : r.eventId || 'Event');
-                const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '--';
-
-                return `
-                <div class="col-md-3 col-sm-6" id="lead-card-${r.id}">
-                    <div class="photo-card h-100">
-                        <div class="photo-check-wrap">
-                            <input type="checkbox" class="form-check-input photo-select-checkbox" value="${r.id}" onchange="onPhotoCheckboxChange('${r.id}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
-                        </div>
-
-                        <div class="photo-card-img-wrap" onclick="openPhotoZoom('${r.id}')">
-                            <img src="${imgUrl}" alt="AI Photo" loading="lazy" onerror="this.src='/uploads/templates/default.png';">
-                            <div class="photo-card-overlay">
-                                <span class="btn btn-sm btn-info rounded-circle shadow"><i class="fas fa-search-plus"></i></span>
-                            </div>
-                            <div class="photo-event-badge" title="${eventName} - ${themeName}">
-                                <i class="fas fa-layer-group me-1"></i>${eventName}
-                            </div>
-                        </div>
-
-                        <div class="p-3">
-                            <div class="d-flex justify-content-between align-items-start mb-1">
-                                <b class="text-white text-truncate" style="max-width:140px;">${r.name || 'Guest User'}</b>
-                                <span class="badge bg-dark border border-secondary text-secondary" style="font-size:10px;">${timeStr}</span>
-                            </div>
-                            <small class="text-secondary d-block text-truncate mb-2" style="font-size:11px;">
-                                <i class="fas fa-building me-1"></i>${r.company || 'Attendee'}
-                            </small>
-
-                            <div class="d-flex align-items-center gap-1 mt-2 pt-2 border-top border-secondary border-opacity-10">
-                                <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info flex-grow-1" style="font-size:12px;">
-                                    <i class="fas fa-eye me-1"></i>View
-                                </button>
-                                <a href="${imgUrl}" download="${(r.name||'photo').replace(/\s+/g,'_')}.png" class="btn btn-sm btn-outline-success" title="Download High-Res">
-                                    <i class="fas fa-download"></i>
-                                </a>
-                                <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary" title="Live QR Share Page">
-                                    <i class="fas fa-qrcode"></i>
-                                </a>
-                                <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete Photo">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>`;
-            }).join('');
-        }
-    }
-
-    // Render 2: Compact Table View
     const tableBody = document.getElementById('allLeadsTableBody');
-    if (tableBody) {
-        if (!filtered.length) {
-            tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary py-4">No photos recorded for this event yet.</td></tr>';
-        } else {
-            tableBody.innerHTML = filtered.map(r => {
-                const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '/uploads/templates/default.png');
-                const eventName = r.eventName || (r.eventId === 'default' ? 'General Event' : r.eventId || '--');
-                const themeName = r.personaDescription || r.themeName || 'Theme';
-                const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString() : '--';
 
-                return `
-                <tr id="lead-row-${r.id}">
-                    <td>
-                        <input type="checkbox" class="form-check-input photo-select-checkbox" value="${r.id}" onchange="onPhotoCheckboxChange('${r.id}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
-                    </td>
-                    <td>
-                        <img src="${imgUrl}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${r.id}')" alt="Photo">
-                    </td>
-                    <td>
-                        <b>${r.name || 'Anonymous'}</b>
-                        <br><small class="text-secondary">${r.company || 'Attendee'}</small>
-                    </td>
-                    <td>
-                        <span class="badge bg-dark text-info border border-info border-opacity-25 mb-1">${eventName}</span>
-                        <br><small class="text-secondary">${themeName}</small>
-                    </td>
-                    <td>
-                        <small class="d-block text-secondary">${r.email || '--'}</small>
-                        <small class="d-block text-secondary">${r.phone || '--'}</small>
-                    </td>
-                    <td><small class="text-secondary">${timeStr}</small></td>
-                    <td class="text-end">
-                        <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info me-1" title="View"><i class="fas fa-eye"></i></button>
-                        <a href="${imgUrl}" download="${(r.name||'photo').replace(/\s+/g,'_')}.png" class="btn btn-sm btn-outline-success me-1" title="Download"><i class="fas fa-download"></i></a>
-                        <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary me-1" title="QR Link"><i class="fas fa-qrcode"></i></a>
-                        <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash-alt"></i></button>
-                    </td>
-                </tr>`;
-            }).join('');
+    // ONLY render the ACTIVE mode to prevent DOM overload and memory bloat!
+    if (_photosViewMode === 'grid') {
+        if (tableBody) tableBody.innerHTML = ''; // Keep table clean
+        if (gridContainer) {
+            if (!totalItems) {
+                gridContainer.innerHTML = `
+                    <div class="col-12 text-center text-secondary py-5">
+                        <i class="fas fa-camera fa-3x mb-3 text-secondary opacity-50"></i>
+                        <h5 class="text-white">No photos captured for this event yet</h5>
+                        <p class="small">Photos taken on camera booth will show up here automatically.</p>
+                    </div>`;
+            } else {
+                gridContainer.innerHTML = pageItems.map(r => {
+                    const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '/uploads/templates/default.png');
+                    const themeName = r.personaDescription || r.themeName || 'Event Theme';
+                    const eventName = r.eventName || (r.eventId === 'default' ? 'General Event' : r.eventId || 'Event');
+                    const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '--';
+
+                    return `
+                    <div class="col-md-3 col-sm-6" id="lead-card-${r.id}">
+                        <div class="photo-card h-100">
+                            <div class="photo-check-wrap">
+                                <input type="checkbox" class="form-check-input photo-select-checkbox" value="${r.id}" onchange="onPhotoCheckboxChange('${r.id}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
+                            </div>
+
+                            <div class="photo-card-img-wrap" onclick="openPhotoZoom('${r.id}')">
+                                <img src="${imgUrl}" alt="AI Photo" loading="lazy" decoding="async" onerror="this.src='/uploads/templates/default.png';">
+                                <div class="photo-card-overlay">
+                                    <span class="btn btn-sm btn-info rounded-circle shadow"><i class="fas fa-search-plus"></i></span>
+                                </div>
+                                <div class="photo-event-badge" title="${eventName} - ${themeName}">
+                                    <i class="fas fa-layer-group me-1"></i>${eventName}
+                                </div>
+                            </div>
+
+                            <div class="p-3">
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <b class="text-white text-truncate" style="max-width:140px;">${r.name || 'Guest User'}</b>
+                                    <span class="badge bg-dark border border-secondary text-secondary" style="font-size:10px;">${timeStr}</span>
+                                </div>
+                                <small class="text-secondary d-block text-truncate mb-2" style="font-size:11px;">
+                                    <i class="fas fa-building me-1"></i>${r.company || 'Attendee'}
+                                </small>
+
+                                <div class="d-flex align-items-center gap-1 mt-2 pt-2 border-top border-secondary border-opacity-10">
+                                    <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info flex-grow-1" style="font-size:12px;">
+                                        <i class="fas fa-eye me-1"></i>View
+                                    </button>
+                                    <a href="${imgUrl}" download="${(r.name||'photo').replace(/\s+/g,'_')}.png" class="btn btn-sm btn-outline-success" title="Download High-Res">
+                                        <i class="fas fa-download"></i>
+                                    </a>
+                                    <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary" title="Live QR Share Page">
+                                        <i class="fas fa-qrcode"></i>
+                                    </a>
+                                    <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete Photo">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+        }
+    } else {
+        // Table view
+        if (gridContainer) gridContainer.innerHTML = ''; // Keep grid clean
+        if (tableBody) {
+            if (!totalItems) {
+                tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary py-4">No photos recorded for this event yet.</td></tr>';
+            } else {
+                tableBody.innerHTML = pageItems.map(r => {
+                    const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '/uploads/templates/default.png');
+                    const eventName = r.eventName || (r.eventId === 'default' ? 'General Event' : r.eventId || '--');
+                    const themeName = r.personaDescription || r.themeName || 'Theme';
+                    const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString() : '--';
+
+                    return `
+                    <tr id="lead-row-${r.id}">
+                        <td>
+                            <input type="checkbox" class="form-check-input photo-select-checkbox" value="${r.id}" onchange="onPhotoCheckboxChange('${r.id}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
+                        </td>
+                        <td>
+                            <img src="${imgUrl}" loading="lazy" decoding="async" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${r.id}')" alt="Photo">
+                        </td>
+                        <td>
+                            <b>${r.name || 'Anonymous'}</b>
+                            <br><small class="text-secondary">${r.company || 'Attendee'}</small>
+                        </td>
+                        <td>
+                            <span class="badge bg-dark text-info border border-info border-opacity-25 mb-1">${eventName}</span>
+                            <br><small class="text-secondary">${themeName}</small>
+                        </td>
+                        <td>
+                            <small class="d-block text-secondary">${r.email || '--'}</small>
+                            <small class="d-block text-secondary">${r.phone || '--'}</small>
+                        </td>
+                        <td><small class="text-secondary">${timeStr}</small></td>
+                        <td class="text-end">
+                            <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info me-1" title="View"><i class="fas fa-eye"></i></button>
+                            <a href="${imgUrl}" download="${(r.name||'photo').replace(/\s+/g,'_')}.png" class="btn btn-sm btn-outline-success me-1" title="Download"><i class="fas fa-download"></i></a>
+                            <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary me-1" title="QR Link"><i class="fas fa-qrcode"></i></a>
+                            <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            }
         }
     }
+
+    // Update pagination controls
+    const summaryEl = document.getElementById('photosPageSummary');
+    const jumpInput = document.getElementById('photosJumpInput');
+    if (jumpInput) jumpInput.max = totalPages;
+
+    if (summaryEl) {
+        if (!totalItems) {
+            summaryEl.innerText = 'Showing 0 of 0 photos';
+        } else {
+            summaryEl.innerHTML = `Showing <b>${startIdx + 1}</b> to <b>${endIdx}</b> of <b>${totalItems}</b> photos (Page <b>${_photosCurrentPage}</b> of <b>${totalPages}</b>)`;
+        }
+    }
+    renderPhotosPaginationControls(totalPages);
+}
+
+function renderPhotosPaginationControls(totalPages) {
+    const paginationEl = document.getElementById('photosPagination');
+    if (!paginationEl) return;
+    if (totalPages <= 1) {
+        paginationEl.innerHTML = '';
+        return;
+    }
+
+    const cur = _photosCurrentPage;
+    let html = '';
+
+    // Prev Button
+    html += `<li class="page-item ${cur === 1 ? 'disabled' : ''}">
+        <a class="page-link bg-dark text-white border-secondary" href="javascript:void(0)" onclick="goToPhotosPage(${cur - 1})" aria-label="Previous">
+            <i class="fas fa-chevron-left"></i>
+        </a>
+    </li>`;
+
+    // Smart Page Numbers
+    const pagesToShow = [];
+    if (totalPages <= 7) {
+        for (let i = 1; i <= totalPages; i++) pagesToShow.push(i);
+    } else {
+        pagesToShow.push(1);
+        if (cur > 3) pagesToShow.push('...');
+        const start = Math.max(2, cur - 1);
+        const end = Math.min(totalPages - 1, cur + 1);
+        for (let i = start; i <= end; i++) {
+            if (!pagesToShow.includes(i)) pagesToShow.push(i);
+        }
+        if (cur < totalPages - 2) pagesToShow.push('...');
+        if (!pagesToShow.includes(totalPages)) pagesToShow.push(totalPages);
+    }
+
+    pagesToShow.forEach(p => {
+        if (p === '...') {
+            html += `<li class="page-item disabled"><span class="page-link bg-dark text-secondary border-secondary">...</span></li>`;
+        } else {
+            const isActive = (p === cur);
+            html += `<li class="page-item ${isActive ? 'active' : ''}">
+                <a class="page-link ${isActive ? 'bg-info text-dark border-info fw-bold' : 'bg-dark text-white border-secondary'}" href="javascript:void(0)" onclick="goToPhotosPage(${p})">${p}</a>
+            </li>`;
+        }
+    });
+
+    // Next Button
+    html += `<li class="page-item ${cur === totalPages ? 'disabled' : ''}">
+        <a class="page-link bg-dark text-white border-secondary" href="javascript:void(0)" onclick="goToPhotosPage(${cur + 1})" aria-label="Next">
+            <i class="fas fa-chevron-right"></i>
+        </a>
+    </li>`;
+
+    paginationEl.innerHTML = html;
 }
 
 function calculateBilling(customCount) {
@@ -1435,43 +1557,6 @@ function calculateBilling(customCount) {
         amountEl.innerText = parseFloat(total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     return { count, rate, total };
-}
-
-function openInvoiceFromBilling() {
-    const { count, rate, total } = calculateBilling();
-    const eventNameEl = document.getElementById('statSelectedEventName');
-    const eventName = eventNameEl ? eventNameEl.innerText : 'Event';
-    
-    document.getElementById('invEventName').innerText = eventName;
-    document.getElementById('invClient').innerText = (_currentEventFilter === 'all' ? 'All Clients' : 'Event Organizer');
-    document.getElementById('invDate').innerText = new Date().toLocaleDateString('en-IN');
-    document.getElementById('invRate').innerText = rate;
-    document.getElementById('invCount').innerText = count;
-    document.getElementById('invTotal').innerText = total.toLocaleString('en-IN');
-    document.getElementById('invSub').innerText = total.toLocaleString('en-IN');
-    document.getElementById('invGrand').innerText = total.toLocaleString('en-IN');
-
-    new bootstrap.Modal(document.getElementById('invoiceModal')).show();
-}
-
-function setPhotosViewMode(mode) {
-    _photosViewMode = mode;
-    const gridView = document.getElementById('photosGridView');
-    const tableView = document.getElementById('photosTableView');
-    const btnGrid = document.getElementById('btnViewGrid');
-    const btnTable = document.getElementById('btnViewTable');
-
-    if (mode === 'grid') {
-        gridView.classList.remove('d-none');
-        tableView.classList.add('d-none');
-        btnGrid.classList.add('active');
-        btnTable.classList.remove('active');
-    } else {
-        gridView.classList.add('d-none');
-        tableView.classList.remove('d-none');
-        btnGrid.classList.remove('active');
-        btnTable.classList.add('active');
-    }
 }
 
 function toggleSelectAll(masterCb) {

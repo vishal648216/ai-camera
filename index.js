@@ -177,6 +177,9 @@ const templateSchema = new mongoose.Schema({ id: String, name: String, imageUrl:
 const Template = mongoose.model('Template', templateSchema);
 
 const registrationSchema = new mongoose.Schema({ id: String, token: String, eventId: String, name: String, email: String, phone: String, gender: String, company: String, personaDescription: String, usedProvider: String, selfieUrl: String, resultUrl: String, resultData: String, timestamp: String }, { strict: false });
+registrationSchema.index({ _id: -1 });
+registrationSchema.index({ eventId: 1, _id: -1 });
+registrationSchema.index({ timestamp: -1 });
 const Registration = mongoose.model('Registration', registrationSchema);
 
 const eventSchema = new mongoose.Schema({
@@ -958,10 +961,42 @@ app.delete('/api/admin/leads-event/:eventId', async (req, res) => {
 app.get('/api/admin/events-summary', async (req, res) => {
     try {
         const evs = await safeGetEvents();
-        const regList = await safeGetRegistrations();
+        const countsMap = {};
+        let totalPhotos = 0;
+        let globalLastTime = null;
+
+        if (mongoose.connection.readyState === 1) {
+            try {
+                const agg = await Registration.aggregate([
+                    { $group: { _id: "$eventId", count: { $sum: 1 }, lastTime: { $max: "$timestamp" } } }
+                ]);
+                agg.forEach(c => {
+                    const k = c._id || 'default';
+                    countsMap[k] = { count: c.count, lastTime: c.lastTime };
+                    totalPhotos += c.count;
+                    if (!globalLastTime || (c.lastTime && c.lastTime > globalLastTime)) {
+                        globalLastTime = c.lastTime;
+                    }
+                });
+            } catch (e) {
+                console.warn("Aggregate notice:", e.message);
+            }
+        }
+
+        // Fallback or memory counts if MongoDB not ready
+        if (totalPhotos === 0 && dbStore.registrations) {
+            const regList = dbStore.registrations;
+            totalPhotos = regList.length;
+            globalLastTime = regList.length > 0 ? regList[0].timestamp : null;
+            regList.forEach(r => {
+                const k = r.eventId || 'default';
+                if (!countsMap[k]) countsMap[k] = { count: 0, lastTime: r.timestamp };
+                countsMap[k].count++;
+            });
+        }
         
         const summary = evs.map(ev => {
-            const evPhotos = regList.filter(r => r.eventId === ev.id);
+            const data = countsMap[ev.id] || { count: 0, lastTime: null };
             return {
                 id: ev.id,
                 name: ev.name,
@@ -971,37 +1006,37 @@ app.get('/api/admin/events-summary', async (req, res) => {
                 startDate: ev.startDate,
                 endDate: ev.endDate,
                 status: ev.status,
-                photoCount: evPhotos.length,
-                lastPhotoAt: evPhotos.length > 0 ? evPhotos[0].timestamp : null
+                photoCount: data.count,
+                lastPhotoAt: data.lastTime
             };
         });
 
-        // Also check default/unassigned events
-        const defaultPhotos = regList.filter(r => !r.eventId || r.eventId === 'default');
+        // Add 'all'
         summary.unshift({
             id: 'all',
             name: '✨ All Events Combined',
             location: 'Global',
             ownerName: 'System',
             status: 'active',
-            photoCount: regList.length,
-            lastPhotoAt: regList.length > 0 ? regList[0].timestamp : null
+            photoCount: totalPhotos,
+            lastPhotoAt: globalLastTime
         });
 
-        if (defaultPhotos.length > 0) {
+        // Add default/general booth if any
+        if (countsMap['default'] && countsMap['default'].count > 0) {
             summary.push({
                 id: 'default',
                 name: 'General / Walk-in Booth',
                 location: 'Main Kiosk',
                 ownerName: 'Internal',
                 status: 'active',
-                photoCount: defaultPhotos.length,
-                lastPhotoAt: defaultPhotos[0].timestamp
+                photoCount: countsMap['default'].count,
+                lastPhotoAt: countsMap['default'].lastTime
             });
         }
 
         res.json({
-            totalPhotos: regList.length,
+            totalPhotos: totalPhotos,
             events: summary
         });
     } catch(e) {
