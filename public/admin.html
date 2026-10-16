@@ -49,6 +49,79 @@
         /* Pulse animation for live */
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         .pulse { animation: pulse 1.5s infinite; }
+
+        /* Photo Card & Gallery Styles */
+        .photo-card {
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+            background: #11112b;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            overflow: hidden;
+            position: relative;
+        }
+        .photo-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(0,242,254,0.18);
+            border-color: rgba(0,242,254,0.4);
+        }
+        .photo-card-img-wrap {
+            height: 220px;
+            width: 100%;
+            background: #000;
+            position: relative;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        .photo-card-img-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s;
+        }
+        .photo-card-img-wrap:hover img {
+            transform: scale(1.05);
+        }
+        .photo-card-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            opacity: 0;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .photo-card-img-wrap:hover .photo-card-overlay {
+            opacity: 1;
+        }
+        .photo-check-wrap {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 5;
+            background: rgba(0,0,0,0.65);
+            border-radius: 6px;
+            padding: 3px 6px;
+            backdrop-filter: blur(4px);
+        }
+        .photo-event-badge {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            right: 8px;
+            background: rgba(17,17,43,0.88);
+            border: 1px solid rgba(0,242,254,0.3);
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 11px;
+            color: #00f2fe;
+            backdrop-filter: blur(4px);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            z-index: 4;
+        }
     </style>
 </head>
 <body>
@@ -61,7 +134,7 @@
         <div class="nav-link active" data-sec="dashboard"><i class="fas fa-chart-pie me-3"></i> Dashboard</div>
         <div class="nav-link" data-sec="events"><i class="fas fa-calendar-check me-3"></i> Manage Events</div>
         <div class="nav-link" data-sec="templates"><i class="fas fa-layer-group me-3"></i> Theme Builder</div>
-        <div class="nav-link" data-sec="leads"><i class="fas fa-id-card me-3"></i> Lead Database</div>
+        <div class="nav-link" data-sec="leads"><i class="fas fa-images me-3"></i> Photos & Billing</div>
         <div class="nav-link" data-sec="ai-engine"><i class="fas fa-microchip me-3"></i> AI Engine Control</div>
     </div>
     <div class="mt-auto p-4 border-top border-secondary border-opacity-10">
@@ -137,14 +210,112 @@
         <div id="templateGrid" class="row g-4"><div class="col-12 text-center text-secondary py-4">Loading templates...</div></div>
     </section>
 
-    <!-- Lead Database -->
+    <!-- Photos & Billing Management -->
     <section id="leads" class="d-none">
-        <div class="d-flex justify-content-between align-items-center mb-5">
-            <h1>Global Lead Database</h1>
-            <button onclick="exportLeadsCSV()" class="btn btn-outline-success px-4 fw-bold"><i class="fas fa-file-export me-2"></i>Export CSV</button>
+        <div class="d-flex justify-content-between align-items-end mb-4">
+            <div>
+                <h1 class="fw-bold"><i class="fas fa-camera-retro text-info me-2"></i>Event Photos & Billing</h1>
+                <p class="text-secondary mb-0">Track photos clicked per event, calculate customer payments, and manage/bulk-delete photos.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button onclick="fetchLeads()" class="btn btn-outline-info px-3"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+                <button onclick="exportLeadsCSV()" class="btn btn-outline-success px-3 fw-bold"><i class="fas fa-file-export me-1"></i>Export CSV</button>
+            </div>
         </div>
-        <div class="glass-card p-0 overflow-hidden">
-            <table class="table table-dark table-hover mb-0"><tbody id="allLeadsTable"><tr><td class="text-center text-secondary py-4">Loading leads...</td></tr></tbody></table>
+
+        <!-- 4 Metric Cards for Event Photo Counting & Billing -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="glass-card stat-card" style="border-left-color: var(--accent);">
+                    <small class="text-secondary fw-bold">PHOTOS COUNT (THIS EVENT)</small>
+                    <div id="statFilteredPhotosCount" class="stat-val text-info">0</div>
+                    <small class="text-secondary" id="statPhotosSub">Total photos clicked</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="glass-card stat-card" style="border-left-color: var(--green);">
+                    <small class="text-secondary fw-bold">ACTIVE FILTER EVENT</small>
+                    <div id="statSelectedEventName" class="h4 mt-2 mb-1 text-truncate text-white">All Events</div>
+                    <small class="text-secondary" id="statEventDetailsSub">Showing all generated photos</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="glass-card stat-card" style="border-left-color: #ffaa00;">
+                    <small class="text-secondary fw-bold">BILLING RATE PER PHOTO</small>
+                    <div class="d-flex align-items-center mt-2 mb-1">
+                        <span class="fs-4 fw-bold me-1 text-warning">₹</span>
+                        <input type="number" id="inputPhotoRate" value="50" min="0" step="1" class="form-control bg-dark text-warning border-secondary fw-bold fs-5 p-1" style="width:110px;" oninput="calculateBilling()">
+                    </div>
+                    <small class="text-secondary">Custom rate to charge client</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="glass-card stat-card" style="border-left-color: var(--purp);">
+                    <small class="text-secondary fw-bold">TOTAL AMOUNT TO COLLECT</small>
+                    <div class="stat-val text-success">₹<span id="statBillableAmount">0</span></div>
+                    <button class="btn btn-sm btn-outline-warning w-100 mt-1 fw-bold" onclick="openInvoiceFromBilling()"><i class="fas fa-file-invoice-dollar me-1"></i>Generate Client Bill</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter & Bulk Action Toolbar -->
+        <div class="glass-card mb-4 p-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div class="d-flex align-items-center gap-3 flex-grow-1">
+                    <label class="small text-secondary fw-bold mb-0 text-nowrap"><i class="fas fa-filter text-info me-1"></i>Event Filter:</label>
+                    <select id="filterEventSelect" class="form-select bg-dark text-white border-info w-auto" onchange="onEventFilterChange()">
+                        <option value="all">✨ All Events Combined</option>
+                    </select>
+
+                    <div class="btn-group ms-2" role="group">
+                        <button type="button" class="btn btn-sm btn-outline-info active" id="btnViewGrid" onclick="setPhotosViewMode('grid')"><i class="fas fa-th-large me-1"></i>Gallery Grid</button>
+                        <button type="button" class="btn btn-sm btn-outline-info" id="btnViewTable" onclick="setPhotosViewMode('table')"><i class="fas fa-list me-1"></i>Table</button>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                    <div class="form-check d-flex align-items-center me-2 mb-0">
+                        <input class="form-check-input me-2" type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)" style="cursor:pointer;width:18px;height:18px;">
+                        <label class="form-check-label small fw-bold text-secondary" for="selectAllCheckbox" style="cursor:pointer;">Select All</label>
+                    </div>
+
+                    <button id="btnBulkDelete" class="btn btn-danger btn-sm px-3 fw-bold disabled" onclick="executeBulkDelete()" title="Delete all selected photos">
+                        <i class="fas fa-trash-alt me-1"></i>Delete Selected (<span id="selectedCount">0</span>)
+                    </button>
+
+                    <button id="btnDeleteEventPhotos" class="btn btn-outline-danger btn-sm px-3" onclick="deleteCurrentEventPhotos()" title="Clear all photos for this event">
+                        <i class="fas fa-dumpster me-1"></i>Clear Event Photos
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Photos View 1: High-Res Visual Gallery Grid -->
+        <div id="photosGridView" class="row g-3 mb-4">
+            <div class="col-12 text-center text-secondary py-5">
+                <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                <p>Loading event photos...</p>
+            </div>
+        </div>
+
+        <!-- Photos View 2: Compact Table View (Default Hidden) -->
+        <div id="photosTableView" class="glass-card p-0 overflow-hidden d-none mb-4">
+            <table class="table table-dark table-hover mb-0 align-middle">
+                <thead>
+                    <tr class="text-secondary small">
+                        <th style="width:40px;"></th>
+                        <th>Photo</th>
+                        <th>User / Attendee</th>
+                        <th>Event & Theme</th>
+                        <th>Contact</th>
+                        <th>Date & Time</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="allLeadsTableBody">
+                    <tr><td colspan="7" class="text-center text-secondary py-4">Loading leads...</td></tr>
+                </tbody>
+            </table>
         </div>
     </section>
 
@@ -313,6 +484,38 @@
                 </table>
             </div>
             <div class="modal-footer"><button type="button" class="btn btn-primary" onclick="window.print()"><i class="fas fa-print me-2"></i>Print Invoice</button></div>
+        </div>
+    </div>
+</div>
+
+<!-- Photo Zoom & Detail Modal -->
+<div class="modal fade" id="photoZoomModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content glass-card p-0" style="background:#11112b;border:1px solid rgba(0,242,254,0.3);">
+            <div class="modal-header border-secondary border-opacity-25 p-3">
+                <h5 class="modal-title text-info fw-bold mb-0" id="zoomModalTitle">Generated AI Photo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3 text-center bg-black bg-opacity-50">
+                <img id="zoomModalImg" src="" class="img-fluid rounded shadow-lg" style="max-height:65vh;object-fit:contain;" alt="AI Photo Fullscreen">
+                <div class="mt-3 text-start bg-dark p-3 rounded">
+                    <div class="row g-2 small">
+                        <div class="col-md-6"><span class="text-secondary">Attendee:</span> <b id="zoomModalUser" class="text-white">--</b></div>
+                        <div class="col-md-6"><span class="text-secondary">Event / Theme:</span> <b id="zoomModalEvent" class="text-info">--</b></div>
+                        <div class="col-md-6"><span class="text-secondary">Company:</span> <span id="zoomModalCompany" class="text-white">--</span></div>
+                        <div class="col-md-6"><span class="text-secondary">Captured Time:</span> <span id="zoomModalTime" class="text-white">--</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-secondary border-opacity-25 p-3 d-flex justify-content-between">
+                <div>
+                    <button type="button" id="zoomDeleteBtn" class="btn btn-outline-danger btn-sm"><i class="fas fa-trash me-1"></i>Delete Photo</button>
+                </div>
+                <div class="d-flex gap-2">
+                    <a id="zoomDownloadBtn" href="#" download="event_photo.png" class="btn btn-info btn-sm px-3 fw-bold"><i class="fas fa-download me-1"></i>Download</a>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -784,47 +987,436 @@ document.getElementById('uploadModal').addEventListener('hidden.bs.modal', () =>
     document.getElementById('tmpl-canvas-hint').style.display = '';
 });
 
-// ===== LEADS =====
+// ===== EVENT PHOTOS, BILLING & BULK DELETION =====
+let _allLeads = [];
+let _eventsSummary = [];
+let _currentEventFilter = 'all';
+let _photosViewMode = 'grid';
+let _selectedPhotoIds = new Set();
+let _currentZoomId = null;
+
 async function fetchLeads() {
     try {
-        const res = await fetch(`${API}/api/admin/leads`);
-        const leads = await res.json();
-        if (!leads.length) {
-            document.getElementById('allLeadsTable').innerHTML = '<tr><td class="text-center text-secondary py-4">No leads recorded yet. Users will appear here after registering.</td></tr>';
-            return;
+        // Fetch leads and event summary in parallel
+        const [leadsRes, sumRes] = await Promise.all([
+            fetch(`${API}/api/admin/leads`),
+            fetch(`${API}/api/admin/events-summary`).catch(() => null)
+        ]);
+
+        _allLeads = await leadsRes.json();
+        if (sumRes && sumRes.ok) {
+            const sumData = await sumRes.json();
+            _eventsSummary = sumData.events || [];
+        } else {
+            _eventsSummary = [];
         }
-        document.getElementById('allLeadsTable').innerHTML = `<thead><tr class="text-secondary small">
-            <th>Selfie</th><th>User</th><th>Email</th><th>Phone</th><th>Company</th><th>Time</th><th>AI Photo</th><th>Action</th>
-        </tr></thead>` + leads.map(r => `<tr>
-            <td>${r.selfieUrl?`<img src="${r.selfieUrl}" style="width:36px;height:36px;object-fit:cover;border-radius:50%;border:1px solid #4facfe;cursor:pointer" onclick="window.open('${r.selfieUrl}','_blank')">`:'--'}</td>
-            <td><b>${r.name||'--'}</b></td>
-            <td>${r.email||'--'}</td>
-            <td>${r.phone||'--'}</td>
-            <td>${r.company||'--'}</td>
-            <td>${r.timestamp?new Date(r.timestamp).toLocaleString():'--'}</td>
-            <td>${r.resultUrl?`<img src="${r.resultUrl}" style="width:42px;height:42px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="window.open('${r.resultUrl}','_blank')">`:'<span class="text-secondary small">Processing</span>'}</td>
-            <td>
-                ${r.resultUrl?`<a href="${r.resultUrl}" target="_blank" class="btn btn-sm btn-outline-info me-1"><i class="fas fa-external-link-alt"></i></a>`:''}
-                <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-success"><i class="fas fa-qrcode"></i></a>
-            </td>
-        </tr>`).join('');
+
+        populateEventFilterDropdown();
+        renderFilteredPhotos();
     } catch(e) {
-        document.getElementById('allLeadsTable').innerHTML = '<tr><td class="text-center text-danger py-4">Error loading leads.</td></tr>';
+        document.getElementById('photosGridView').innerHTML = `<div class="col-12 text-center text-danger py-4">Error loading photos: ${e.message}</div>`;
+        document.getElementById('allLeadsTableBody').innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">Error loading photos.</td></tr>`;
     }
+}
+
+function populateEventFilterDropdown() {
+    const sel = document.getElementById('filterEventSelect');
+    if (!sel) return;
+    
+    // Save current selection if possible
+    const currentVal = _currentEventFilter || 'all';
+    
+    let html = `<option value="all">✨ All Events Combined (${_allLeads.length} photos)</option>`;
+    
+    // Build options from _eventsSummary or dynamically from _allLeads
+    const seenEventIds = new Set();
+    
+    if (_eventsSummary && _eventsSummary.length > 0) {
+        _eventsSummary.forEach(ev => {
+            if (ev.id !== 'all') {
+                seenEventIds.add(ev.id);
+                html += `<option value="${ev.id}">🎪 ${ev.name} (${ev.photoCount} photos)</option>`;
+            }
+        });
+    }
+
+    // Also pick any orphan eventIds in leads
+    _allLeads.forEach(r => {
+        const evId = r.eventId || 'default';
+        if (evId !== 'all' && !seenEventIds.has(evId)) {
+            seenEventIds.add(evId);
+            const count = _allLeads.filter(x => (x.eventId || 'default') === evId).length;
+            const evName = r.eventName || (evId === 'default' ? 'General Booth' : evId);
+            html += `<option value="${evId}">🎪 ${evName} (${count} photos)</option>`;
+        }
+    });
+
+    sel.innerHTML = html;
+    if (seenEventIds.has(currentVal) || currentVal === 'all') {
+        sel.value = currentVal;
+    } else {
+        sel.value = 'all';
+        _currentEventFilter = 'all';
+    }
+}
+
+function onEventFilterChange() {
+    const sel = document.getElementById('filterEventSelect');
+    _currentEventFilter = sel.value;
+    renderFilteredPhotos();
+}
+
+function renderFilteredPhotos() {
+    _selectedPhotoIds.clear();
+    updateBulkDeleteUi();
+    const selectAllCb = document.getElementById('selectAllCheckbox');
+    if (selectAllCb) selectAllCb.checked = false;
+
+    // Filter leads
+    const filtered = (_currentEventFilter === 'all') 
+        ? _allLeads 
+        : _allLeads.filter(r => (r.eventId || 'default') === _currentEventFilter);
+
+    // Update Counter & Event Title
+    const photoCountEl = document.getElementById('statFilteredPhotosCount');
+    if (photoCountEl) photoCountEl.innerText = filtered.length;
+
+    const eventNameEl = document.getElementById('statSelectedEventName');
+    if (eventNameEl) {
+        if (_currentEventFilter === 'all') {
+            eventNameEl.innerText = 'All Events Combined';
+            document.getElementById('statEventDetailsSub').innerText = `Showing all ${filtered.length} generated photos`;
+        } else {
+            const foundEv = _eventsSummary.find(e => e.id === _currentEventFilter);
+            const name = foundEv ? foundEv.name : (_currentEventFilter === 'default' ? 'General Booth' : _currentEventFilter);
+            eventNameEl.innerText = name;
+            document.getElementById('statEventDetailsSub').innerText = `Filtered event: ${name}`;
+        }
+    }
+
+    calculateBilling(filtered.length);
+
+    // Render 1: Gallery Grid View
+    const gridContainer = document.getElementById('photosGridView');
+    if (gridContainer) {
+        if (!filtered.length) {
+            gridContainer.innerHTML = `
+                <div class="col-12 text-center text-secondary py-5">
+                    <i class="fas fa-camera fa-3x mb-3 text-secondary opacity-50"></i>
+                    <h5 class="text-white">No photos captured for this event yet</h5>
+                    <p class="small">Photos taken on camera booth will show up here automatically.</p>
+                </div>
+            `;
+        } else {
+            gridContainer.innerHTML = filtered.map(r => {
+                const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '/uploads/templates/default.png');
+                const themeName = r.personaDescription || r.themeName || 'Event Theme';
+                const eventName = r.eventName || (r.eventId === 'default' ? 'General Event' : r.eventId || 'Event');
+                const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '--';
+
+                return `
+                <div class="col-md-3 col-sm-6" id="lead-card-${r.id}">
+                    <div class="photo-card h-100">
+                        <div class="photo-check-wrap">
+                            <input type="checkbox" class="form-check-input photo-select-checkbox" value="${r.id}" onchange="onPhotoCheckboxChange('${r.id}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
+                        </div>
+
+                        <div class="photo-card-img-wrap" onclick="openPhotoZoom('${r.id}')">
+                            <img src="${imgUrl}" alt="AI Photo" loading="lazy" onerror="this.src='/uploads/templates/default.png';">
+                            <div class="photo-card-overlay">
+                                <span class="btn btn-sm btn-info rounded-circle shadow"><i class="fas fa-search-plus"></i></span>
+                            </div>
+                            <div class="photo-event-badge" title="${eventName} - ${themeName}">
+                                <i class="fas fa-layer-group me-1"></i>${eventName}
+                            </div>
+                        </div>
+
+                        <div class="p-3">
+                            <div class="d-flex justify-content-between align-items-start mb-1">
+                                <b class="text-white text-truncate" style="max-width:140px;">${r.name || 'Guest User'}</b>
+                                <span class="badge bg-dark border border-secondary text-secondary" style="font-size:10px;">${timeStr}</span>
+                            </div>
+                            <small class="text-secondary d-block text-truncate mb-2" style="font-size:11px;">
+                                <i class="fas fa-building me-1"></i>${r.company || 'Attendee'}
+                            </small>
+
+                            <div class="d-flex align-items-center gap-1 mt-2 pt-2 border-top border-secondary border-opacity-10">
+                                <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info flex-grow-1" style="font-size:12px;">
+                                    <i class="fas fa-eye me-1"></i>View
+                                </button>
+                                <a href="${imgUrl}" download="${(r.name||'photo').replace(/\s+/g,'_')}.png" class="btn btn-sm btn-outline-success" title="Download High-Res">
+                                    <i class="fas fa-download"></i>
+                                </a>
+                                <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary" title="Live QR Share Page">
+                                    <i class="fas fa-qrcode"></i>
+                                </a>
+                                <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete Photo">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+    }
+
+    // Render 2: Compact Table View
+    const tableBody = document.getElementById('allLeadsTableBody');
+    if (tableBody) {
+        if (!filtered.length) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-secondary py-4">No photos recorded for this event yet.</td></tr>';
+        } else {
+            tableBody.innerHTML = filtered.map(r => {
+                const imgUrl = r.resultUrl || (r.resultData && r.resultData.startsWith('data:image') ? r.resultData : '/uploads/templates/default.png');
+                const eventName = r.eventName || (r.eventId === 'default' ? 'General Event' : r.eventId || '--');
+                const themeName = r.personaDescription || r.themeName || 'Theme';
+                const timeStr = r.timestamp ? new Date(r.timestamp).toLocaleString() : '--';
+
+                return `
+                <tr id="lead-row-${r.id}">
+                    <td>
+                        <input type="checkbox" class="form-check-input photo-select-checkbox" value="${r.id}" onchange="onPhotoCheckboxChange('${r.id}', this.checked)" style="cursor:pointer;width:17px;height:17px;">
+                    </td>
+                    <td>
+                        <img src="${imgUrl}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #00f2fe;cursor:pointer" onclick="openPhotoZoom('${r.id}')" alt="Photo">
+                    </td>
+                    <td>
+                        <b>${r.name || 'Anonymous'}</b>
+                        <br><small class="text-secondary">${r.company || 'Attendee'}</small>
+                    </td>
+                    <td>
+                        <span class="badge bg-dark text-info border border-info border-opacity-25 mb-1">${eventName}</span>
+                        <br><small class="text-secondary">${themeName}</small>
+                    </td>
+                    <td>
+                        <small class="d-block text-secondary">${r.email || '--'}</small>
+                        <small class="d-block text-secondary">${r.phone || '--'}</small>
+                    </td>
+                    <td><small class="text-secondary">${timeStr}</small></td>
+                    <td class="text-end">
+                        <button onclick="openPhotoZoom('${r.id}')" class="btn btn-sm btn-outline-info me-1" title="View"><i class="fas fa-eye"></i></button>
+                        <a href="${imgUrl}" download="${(r.name||'photo').replace(/\s+/g,'_')}.png" class="btn btn-sm btn-outline-success me-1" title="Download"><i class="fas fa-download"></i></a>
+                        <a href="${API}/share/${r.id}?t=${r.token}" target="_blank" class="btn btn-sm btn-outline-primary me-1" title="QR Link"><i class="fas fa-qrcode"></i></a>
+                        <button onclick="deleteSingleLead('${r.id}')" class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+    }
+}
+
+function calculateBilling(customCount) {
+    const rateInput = document.getElementById('inputPhotoRate');
+    const rate = parseFloat(rateInput ? rateInput.value : 50) || 0;
+    
+    let count = customCount;
+    if (count === undefined) {
+        const filtered = (_currentEventFilter === 'all') 
+            ? _allLeads 
+            : _allLeads.filter(r => (r.eventId || 'default') === _currentEventFilter);
+        count = filtered.length;
+    }
+
+    const total = Math.round(count * rate);
+    const amountEl = document.getElementById('statBillableAmount');
+    if (amountEl) amountEl.innerText = total.toLocaleString('en-IN');
+    return { count, rate, total };
+}
+
+function openInvoiceFromBilling() {
+    const { count, rate, total } = calculateBilling();
+    const eventNameEl = document.getElementById('statSelectedEventName');
+    const eventName = eventNameEl ? eventNameEl.innerText : 'Event';
+    
+    document.getElementById('invEventName').innerText = eventName;
+    document.getElementById('invClient').innerText = (_currentEventFilter === 'all' ? 'All Clients' : 'Event Organizer');
+    document.getElementById('invDate').innerText = new Date().toLocaleDateString('en-IN');
+    document.getElementById('invRate').innerText = rate;
+    document.getElementById('invCount').innerText = count;
+    document.getElementById('invTotal').innerText = total.toLocaleString('en-IN');
+    document.getElementById('invSub').innerText = total.toLocaleString('en-IN');
+    document.getElementById('invGrand').innerText = total.toLocaleString('en-IN');
+
+    new bootstrap.Modal(document.getElementById('invoiceModal')).show();
+}
+
+function setPhotosViewMode(mode) {
+    _photosViewMode = mode;
+    const gridView = document.getElementById('photosGridView');
+    const tableView = document.getElementById('photosTableView');
+    const btnGrid = document.getElementById('btnViewGrid');
+    const btnTable = document.getElementById('btnViewTable');
+
+    if (mode === 'grid') {
+        gridView.classList.remove('d-none');
+        tableView.classList.add('d-none');
+        btnGrid.classList.add('active');
+        btnTable.classList.remove('active');
+    } else {
+        gridView.classList.add('d-none');
+        tableView.classList.remove('d-none');
+        btnGrid.classList.remove('active');
+        btnTable.classList.add('active');
+    }
+}
+
+function toggleSelectAll(masterCb) {
+    const checked = masterCb.checked;
+    const checkboxes = document.querySelectorAll('.photo-select-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = checked;
+        if (checked) _selectedPhotoIds.add(cb.value);
+        else _selectedPhotoIds.delete(cb.value);
+    });
+    updateBulkDeleteUi();
+}
+
+function onPhotoCheckboxChange(id, isChecked) {
+    if (isChecked) _selectedPhotoIds.add(id);
+    else _selectedPhotoIds.delete(id);
+    updateBulkDeleteUi();
+}
+
+function updateBulkDeleteUi() {
+    const count = _selectedPhotoIds.size;
+    const countSpan = document.getElementById('selectedCount');
+    if (countSpan) countSpan.innerText = count;
+
+    const btn = document.getElementById('btnBulkDelete');
+    if (btn) {
+        if (count > 0) {
+            btn.classList.remove('disabled');
+        } else {
+            btn.classList.add('disabled');
+        }
+    }
+}
+
+async function executeBulkDelete() {
+    const ids = Array.from(_selectedPhotoIds);
+    if (!ids.length) return alert('Please select at least one photo to delete.');
+
+    if (!confirm(`⚠️ Are you sure you want to permanently delete ${ids.length} selected photos?\nThis will remove them from the database and disk.`)) {
+        return;
+    }
+
+    const btn = document.getElementById('btnBulkDelete');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Deleting...'; }
+
+    try {
+        const res = await fetch(`${API}/api/admin/leads/bulk-delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids })
+        });
+        const data = await res.json();
+        if (data.success) {
+            _selectedPhotoIds.clear();
+            await fetchLeads();
+            alert(`✓ Successfully deleted ${data.deletedCount || ids.length} photos.`);
+        } else {
+            throw new Error(data.error || 'Failed to delete photos');
+        }
+    } catch(err) {
+        alert('Error deleting photos: ' + err.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-trash-alt me-1"></i>Delete Selected (<span id="selectedCount">0</span>)`; }
+    }
+}
+
+async function deleteSingleLead(id) {
+    if (!confirm('Are you sure you want to permanently delete this photo?')) return;
+    try {
+        const res = await fetch(`${API}/api/admin/leads/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            _selectedPhotoIds.delete(id);
+            await fetchLeads();
+        } else {
+            alert('Failed to delete photo: ' + (data.error || 'Unknown error'));
+        }
+    } catch(err) {
+        alert('Error deleting photo: ' + err.message);
+    }
+}
+
+async function deleteCurrentEventPhotos() {
+    const eventName = document.getElementById('statSelectedEventName').innerText;
+    const msg = (_currentEventFilter === 'all')
+        ? `🚨 CAUTION: Are you sure you want to delete ALL photos across ALL events permanently?`
+        : `⚠️ Are you sure you want to delete all photos for event: "${eventName}"?`;
+    
+    if (!confirm(msg)) return;
+
+    try {
+        const res = await fetch(`${API}/api/admin/leads-event/${_currentEventFilter}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            _selectedPhotoIds.clear();
+            await fetchLeads();
+            alert(`✓ Successfully deleted ${data.deletedCount} photos.`);
+        } else {
+            alert('Error deleting event photos: ' + (data.error || 'Failed'));
+        }
+    } catch(e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+function openPhotoZoom(id) {
+    const item = _allLeads.find(x => x.id === id);
+    if (!item) return;
+
+    _currentZoomId = id;
+    const imgUrl = item.resultUrl || (item.resultData && item.resultData.startsWith('data:image') ? item.resultData : '/uploads/templates/default.png');
+    
+    document.getElementById('zoomModalTitle').innerText = item.name ? `${item.name}'s AI Photo` : 'Generated AI Photo';
+    document.getElementById('zoomModalImg').src = imgUrl;
+    document.getElementById('zoomModalUser').innerText = item.name || 'Anonymous';
+    document.getElementById('zoomModalCompany').innerText = item.company || 'Attendee';
+    document.getElementById('zoomModalEvent').innerText = item.eventName || item.personaDescription || 'Event Theme';
+    document.getElementById('zoomModalTime').innerText = item.timestamp ? new Date(item.timestamp).toLocaleString() : '--';
+    
+    const dlBtn = document.getElementById('zoomDownloadBtn');
+    dlBtn.href = imgUrl;
+    dlBtn.download = `${(item.name || 'photo').replace(/\s+/g,'_')}.png`;
+
+    const delBtn = document.getElementById('zoomDeleteBtn');
+    delBtn.onclick = () => {
+        bootstrap.Modal.getInstance(document.getElementById('photoZoomModal')).hide();
+        deleteSingleLead(id);
+    };
+
+    new bootstrap.Modal(document.getElementById('photoZoomModal')).show();
 }
 
 async function exportLeadsCSV() {
     try {
-        const res = await fetch(`${API}/api/admin/leads`);
-        const leads = await res.json();
-        if (!leads.length) return alert('No leads to export!');
-        const headers = "Name,Email,Phone,Company,Gender,Provider,Timestamp,ResultUrl\n";
-        const rows = leads.map(l => `"${l.name}","${l.email}","${l.phone}","${l.company||''}","${l.gender||'N/A'}","${l.usedProvider||''}","${l.timestamp}","${API}${l.resultUrl}"`).join("\n");
+        const filtered = (_currentEventFilter === 'all') 
+            ? _allLeads 
+            : _allLeads.filter(r => (r.eventId || 'default') === _currentEventFilter);
+
+        if (!filtered.length) return alert('No photos/leads to export for this selection!');
+
+        const headers = "Name,Email,Phone,Company,Event,Theme,Timestamp,PhotoUrl\n";
+        const rows = filtered.map(l => {
+            const ev = (l.eventName || l.eventId || 'General').replace(/"/g, '""');
+            const th = (l.personaDescription || l.themeName || '').replace(/"/g, '""');
+            const photo = `${API}${l.resultUrl || ''}`;
+            return `"${l.name||''}","${l.email||''}","${l.phone||''}","${l.company||''}","${ev}","${th}","${l.timestamp||''}","${photo}"`;
+        }).join("\n");
+
         const blob = new Blob([headers + rows], { type: 'text/csv' });
         const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `leads_export_${Date.now()}.csv`;
-        a.click(); window.URL.revokeObjectURL(url);
-    } catch(e) { alert('Export failed: ' + e.message); }
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `event_photos_${_currentEventFilter}_${Date.now()}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    } catch(e) {
+        alert('Export failed: ' + e.message);
+    }
 }
 
 // ===== AI ENGINE =====

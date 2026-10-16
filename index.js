@@ -190,14 +190,22 @@ const EventModel = mongoose.model('Event', eventSchema);
 const configSchema = new mongoose.Schema({ id: { type: String, default: 'main' }, analytics: { type: Object, default: { totalGens: 0, failovers: 0, popularThemes: {} } }, settings: { type: Object, default: {} } }, { strict: false });
 const Config = mongoose.model('Config', configSchema);
 
-async function safeGetRegistrations() {
+async function safeGetRegistrations(includeResultData = false) {
     try {
         if (mongoose.connection.readyState === 1) {
-            const list = await Registration.find().sort({ _id: -1 }).lean();
+            const projection = includeResultData ? {} : { resultData: 0 };
+            const list = await Registration.find({}, projection).sort({ _id: -1 }).lean();
             if (list) return list;
         }
     } catch (e) {}
-    return dbStore.registrations || [];
+    if (dbStore.registrations) {
+        if (includeResultData) return dbStore.registrations;
+        return dbStore.registrations.map(r => {
+            const { resultData, ...rest } = r;
+            return rest;
+        });
+    }
+    return [];
 }
 
 async function safeGetEvents() {
@@ -464,6 +472,99 @@ async function safeDeleteEvent(id) {
             await EventModel.deleteOne({ id });
         }
     } catch (e) {}
+}
+
+async function safeDeleteRegistration(id) {
+    if (!id) return false;
+    let found = null;
+    if (dbStore.registrations) {
+        const idx = dbStore.registrations.findIndex(r => r.id === id || r._id === id);
+        if (idx >= 0) {
+            found = dbStore.registrations[idx];
+            dbStore.registrations.splice(idx, 1);
+            saveDbStore();
+        }
+    }
+    try {
+        if (mongoose.connection.readyState === 1) {
+            if (!found) found = await Registration.findOne({ $or: [{ id: id }, { _id: id }] }).lean();
+            await Registration.deleteMany({ $or: [{ id: id }, { _id: id }] });
+        }
+    } catch (e) {}
+
+    // Cleanup disk files if exist
+    try {
+        if (found && found.resultUrl) {
+            const rel = found.resultUrl.replace(/^\//, '');
+            const local = path.join(__dirname, rel);
+            if (fs.existsSync(local)) fs.unlinkSync(local);
+        }
+        if (found && found.selfieUrl) {
+            const rel = found.selfieUrl.replace(/^\//, '');
+            const local = path.join(__dirname, rel);
+            if (fs.existsSync(local)) fs.unlinkSync(local);
+        }
+    } catch (e) {}
+    return true;
+}
+
+async function safeDeleteRegistrations(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return 0;
+    const toDeleteIds = ids.map(x => String(x));
+    let deletedCount = 0;
+    let itemsToClean = [];
+
+    if (dbStore.registrations) {
+        dbStore.registrations = dbStore.registrations.filter(r => {
+            const match = toDeleteIds.includes(String(r.id)) || toDeleteIds.includes(String(r._id));
+            if (match) {
+                deletedCount++;
+                itemsToClean.push(r);
+                return false;
+            }
+            return true;
+        });
+        saveDbStore();
+    }
+
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const dbItems = await Registration.find({ $or: [{ id: { $in: toDeleteIds } }, { _id: { $in: toDeleteIds } }] }).lean();
+            if (dbItems && dbItems.length > 0) {
+                itemsToClean.push(...dbItems);
+            }
+            const res = await Registration.deleteMany({ $or: [{ id: { $in: toDeleteIds } }, { _id: { $in: toDeleteIds } }] });
+            if (res && res.deletedCount) deletedCount = Math.max(deletedCount, res.deletedCount);
+        }
+    } catch (e) {}
+
+    // Cleanup files on disk
+    itemsToClean.forEach(item => {
+        try {
+            if (item.resultUrl) {
+                const local = path.join(__dirname, item.resultUrl.replace(/^\//, ''));
+                if (fs.existsSync(local)) fs.unlinkSync(local);
+            }
+            if (item.selfieUrl) {
+                const local = path.join(__dirname, item.selfieUrl.replace(/^\//, ''));
+                if (fs.existsSync(local)) fs.unlinkSync(local);
+            }
+        } catch(e) {}
+    });
+
+    return deletedCount;
+}
+
+async function safeDeleteRegistrationsByEvent(eventId) {
+    if (!eventId) return 0;
+    let leads = await safeGetRegistrations();
+    let toDelete = [];
+    if (eventId === 'all') {
+        toDelete = leads.map(l => l.id);
+    } else {
+        toDelete = leads.filter(l => l.eventId === eventId).map(l => l.id);
+    }
+    return await safeDeleteRegistrations(toDelete);
 }
 
 async function safeDeleteTemplate(id) {
@@ -816,20 +917,105 @@ app.get('/api/admin/settings', async (req, res) => { res.json(dbStore.configs?.s
 app.post('/api/admin/settings', async (req, res) => { dbStore.configs.settings = { ...dbStore.configs.settings, ...req.body }; saveDbStore(); res.json({ success: true }); });
 
 app.get('/api/admin/leads', async (req, res) => {
-    const list = await safeGetRegistrations();
-    if (req.query.eventId) {
-        return res.json(list.filter(r => r.eventId === req.query.eventId));
+    let list = await safeGetRegistrations();
+    if (req.query.eventId && req.query.eventId !== 'all') {
+        list = list.filter(r => r.eventId === req.query.eventId);
     }
     res.json(list);
 });
 
+app.delete('/api/admin/leads/:id', async (req, res) => {
+    try {
+        await safeDeleteRegistration(req.params.id);
+        res.json({ success: true, id: req.params.id });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.post('/api/admin/leads/bulk-delete', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, error: "No photo IDs provided" });
+        }
+        const count = await safeDeleteRegistrations(ids);
+        res.json({ success: true, deletedCount: count });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.delete('/api/admin/leads-event/:eventId', async (req, res) => {
+    try {
+        const count = await safeDeleteRegistrationsByEvent(req.params.eventId);
+        res.json({ success: true, deletedCount: count });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/api/admin/events-summary', async (req, res) => {
+    try {
+        const evs = await safeGetEvents();
+        const regList = await safeGetRegistrations();
+        
+        const summary = evs.map(ev => {
+            const evPhotos = regList.filter(r => r.eventId === ev.id);
+            return {
+                id: ev.id,
+                name: ev.name,
+                location: ev.location,
+                ownerName: ev.ownerName,
+                ownerNumber: ev.ownerNumber,
+                startDate: ev.startDate,
+                endDate: ev.endDate,
+                status: ev.status,
+                photoCount: evPhotos.length,
+                lastPhotoAt: evPhotos.length > 0 ? evPhotos[0].timestamp : null
+            };
+        });
+
+        // Also check default/unassigned events
+        const defaultPhotos = regList.filter(r => !r.eventId || r.eventId === 'default');
+        summary.unshift({
+            id: 'all',
+            name: '✨ All Events Combined',
+            location: 'Global',
+            ownerName: 'System',
+            status: 'active',
+            photoCount: regList.length,
+            lastPhotoAt: regList.length > 0 ? regList[0].timestamp : null
+        });
+
+        if (defaultPhotos.length > 0) {
+            summary.push({
+                id: 'default',
+                name: 'General / Walk-in Booth',
+                location: 'Main Kiosk',
+                ownerName: 'Internal',
+                status: 'active',
+                photoCount: defaultPhotos.length,
+                lastPhotoAt: defaultPhotos[0].timestamp
+            });
+        }
+
+        res.json({
+            totalPhotos: regList.length,
+            events: summary
+        });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/admin/events/:id/invoice', async (req, res) => {
     const evs = await safeGetEvents();
-    const ev = evs.find(e => e.id === req.params.id);
-    if (!ev) return res.status(404).send("Not found");
+    const ev = evs.find(e => e.id === req.params.id) || { id: req.params.id, name: 'Event', ownerName: 'Client' };
     const regList = await safeGetRegistrations();
-    const count = regList.filter(r => r.eventId === ev.id).length;
-    res.json({ event: ev, totalGenerations: count, costPerGeneration: 5.0, totalAmount: count*5.0, invoiceDate: new Date().toISOString() });
+    const count = (req.params.id === 'all') ? regList.length : regList.filter(r => r.eventId === req.params.id).length;
+    const rate = parseFloat(req.query.rate) || 5.0;
+    res.json({ event: ev, totalGenerations: count, costPerGeneration: rate, totalAmount: count * rate, invoiceDate: new Date().toISOString() });
 });
 
 // App Templates (INJECT EVENT BANNER IF ACTIVE!)
@@ -1665,11 +1851,9 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
 
     let activeEvent = { id: 'default', name: 'General Event' };
     try {
-        if (mongoose.connection.readyState === 1) {
-            const evs = await EventModel.find({ status: { $ne: 'closed' } }).sort({ _id: -1 }).lean();
-            if (evs && evs.length > 0) {
-                activeEvent = evs.find(e => checkEventStatus(e) === 'active') || evs[0];
-            }
+        const evs = await safeGetEvents();
+        if (evs && evs.length > 0) {
+            activeEvent = evs.find(e => checkEventStatus(e) === 'active') || evs[0];
         }
     } catch(e) {
         console.warn("Event query notice:", e.message);
@@ -1701,12 +1885,13 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
         id: regId, 
         token: token,
         eventId: activeEvent ? activeEvent.id : 'default', 
+        eventName: activeEvent ? activeEvent.name : 'General Event',
         name: name || 'Anonymous', 
         email: email || 'N/A', 
         phone: phone || 'N/A', 
         gender: gender || 'Not Specified', 
         company: company || "Self", 
-        personaDescription: "Creating your Masterpiece...", 
+        personaDescription: themeName || (template ? template.name : "Creating your Masterpiece..."), 
         usedProvider: "processing", 
         selfieUrl: selfieUrl, 
         resultUrl: `/uploads/results/${resultFilename}`, 
