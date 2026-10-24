@@ -22,7 +22,7 @@
         .table-dark { --bs-table-bg: transparent; }
 
         /* Canvas / Preview Container */
-        .preview-container { position: relative; display: inline-block; background: #000; border-radius: 12px; border: 2px solid #333; overflow: visible; user-select: none; }
+        .preview-container { position: relative; display: inline-block; background: #000; border-radius: 12px; border: 2px solid #333; overflow: hidden; user-select: none; max-width: 100%; }
         .preview-img { display: block; max-width: 100%; max-height: 500px; border-radius: 10px; pointer-events: none; }
 
         /* Human Silhouette Marker */
@@ -1048,16 +1048,21 @@ const API = window.location.origin;
 // ===== DB STATUS CHECK =====
 async function checkDbStatus() {
     try {
-        const res = await fetch(`${API}/api/admin/stats`);
+        const res = await fetch(`${API}/api/admin/ping`);
         const data = await res.json();
         const dot = document.getElementById('dbStatusDot');
         const txt = document.getElementById('dbStatusText');
         const pg = document.getElementById('dbProgress');
-        if (data && typeof data.totalUsers === 'number') {
+        if (data && data.dbConnected) {
             dot.className = 'connected';
             txt.innerText = 'DB Connected ✓';
             pg.style.width = '100%';
             pg.className = 'progress-bar bg-success';
+        } else {
+            dot.className = 'error';
+            txt.innerText = 'DB Offline';
+            pg.style.width = '20%';
+            pg.className = 'progress-bar bg-warning';
         }
     } catch(e) {
         const dot = document.getElementById('dbStatusDot');
@@ -2500,14 +2505,12 @@ async function deleteAllTemplates() {
 
 async function compressTemplateImage(file) {
     if (!file || !file.type.startsWith('image/')) return file;
-    if (file.size <= 1.2 * 1024 * 1024) return file; // Already small enough
-
     return new Promise((resolve) => {
         const img = new Image();
         const reader = new FileReader();
         reader.onload = (e) => {
             img.onload = () => {
-                let maxDim = 1920;
+                let maxDim = 1600;
                 let w = img.naturalWidth || img.width;
                 let h = img.naturalHeight || img.height;
                 if (w > maxDim || h > maxDim) {
@@ -2523,18 +2526,22 @@ async function compressTemplateImage(file) {
                 canvas.width = w;
                 canvas.height = h;
                 const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, w, h);
                 ctx.drawImage(img, 0, 0, w, h);
                 canvas.toBlob((blob) => {
-                    if (blob && blob.size < file.size) {
-                        const newFile = new File([blob], file.name.replace(/\.[^.]+$/, '.png'), { type: 'image/png' });
+                    if (blob) {
+                        const newFile = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
                         resolve(newFile);
                     } else {
                         resolve(file);
                     }
-                }, 'image/png');
+                }, 'image/jpeg', 0.85);
             };
+            img.onerror = () => resolve(file);
             img.src = e.target.result;
         };
+        reader.onerror = () => resolve(file);
         reader.readAsDataURL(file);
     });
 }
@@ -3318,12 +3325,21 @@ function makeDraggable(stateObj, markerEl, handleEl, containerEl) {
     document.addEventListener('mousemove', (e) => {
         if (dragging) {
             const rect = containerEl.getBoundingClientRect();
-            stateObj.pxX = Math.max(0, Math.min(rect.width - stateObj.pxSize, startPxX + (e.clientX - startX)));
-            stateObj.pxY = Math.max(0, Math.min(rect.height - stateObj.pxSize, startPxY + (e.clientY - startY)));
+            const markerHeight = stateObj.pxSize * 2;
+            const markerWidth = stateObj.pxSize;
+            const maxX = Math.max(0, rect.width - markerWidth);
+            const maxY = Math.max(0, rect.height - markerHeight);
+            stateObj.pxX = Math.max(0, Math.min(maxX, startPxX + (e.clientX - startX)));
+            stateObj.pxY = Math.max(0, Math.min(maxY, startPxY + (e.clientY - startY)));
             updateMarker(stateObj, markerEl);
         }
         if (resizing) {
-            stateObj.pxSize = Math.max(50, Math.min(400, startSize + (e.clientX - startX)));
+            const rect = containerEl.getBoundingClientRect();
+            const delta = (e.clientX - startX);
+            const newSize = Math.max(40, Math.min(250, startSize + delta));
+            const maxAllowedWidth = Math.max(40, rect.width - stateObj.pxX);
+            const maxAllowedHeight = Math.max(40, (rect.height - stateObj.pxY) / 2);
+            stateObj.pxSize = Math.round(Math.min(newSize, maxAllowedWidth, maxAllowedHeight));
             updateMarker(stateObj, markerEl);
         }
     });
@@ -3345,12 +3361,21 @@ function makeDraggable(stateObj, markerEl, handleEl, containerEl) {
         const t = e.touches[0];
         if (dragging) {
             const rect = containerEl.getBoundingClientRect();
-            stateObj.pxX = Math.max(0, Math.min(rect.width - stateObj.pxSize, startPxX + (t.clientX - startX)));
-            stateObj.pxY = Math.max(0, Math.min(rect.height - stateObj.pxSize, startPxY + (t.clientY - startY)));
+            const markerHeight = stateObj.pxSize * 2;
+            const markerWidth = stateObj.pxSize;
+            const maxX = Math.max(0, rect.width - markerWidth);
+            const maxY = Math.max(0, rect.height - markerHeight);
+            stateObj.pxX = Math.max(0, Math.min(maxX, startPxX + (t.clientX - startX)));
+            stateObj.pxY = Math.max(0, Math.min(maxY, startPxY + (t.clientY - startY)));
             updateMarker(stateObj, markerEl);
         }
         if (resizing) {
-            stateObj.pxSize = Math.max(50, Math.min(400, startSize + (t.clientX - startX)));
+            const rect = containerEl.getBoundingClientRect();
+            const delta = (t.clientX - startX);
+            const newSize = Math.max(40, Math.min(250, startSize + delta));
+            const maxAllowedWidth = Math.max(40, rect.width - stateObj.pxX);
+            const maxAllowedHeight = Math.max(40, (rect.height - stateObj.pxY) / 2);
+            stateObj.pxSize = Math.round(Math.min(newSize, maxAllowedWidth, maxAllowedHeight));
             updateMarker(stateObj, markerEl);
         }
     }, {passive: false});

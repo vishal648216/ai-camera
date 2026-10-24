@@ -231,6 +231,7 @@ clientUserSchema.index({ activeSessionToken: 1 });
 const ClientUser = mongoose.model('ClientUser', clientUserSchema);
 
 async function safeGetClientUsers() {
+    await ensureDBConnected();
     try {
         if (mongoose.connection.readyState === 1) {
             const list = await ClientUser.find().sort({ _id: -1 }).lean();
@@ -349,25 +350,33 @@ async function ensureDefaultClientUser() {
 }
 ensureDefaultClientUser();
 
-async function safeGetRegistrations(includeResultData = false) {
+async function safeGetRegistrations(includeResultData = false, limit = 0) {
+    await ensureDBConnected();
     try {
         if (mongoose.connection.readyState === 1) {
-            const projection = includeResultData ? {} : { resultData: 0 };
-            const list = await Registration.find({}, projection).sort({ _id: -1 }).lean();
+            const projection = includeResultData ? {} : { resultData: 0, selfieData: 0 };
+            let query = Registration.find({}, projection).sort({ _id: -1 }).lean();
+            if (limit > 0) query = query.limit(limit);
+            const list = await query;
             if (list) return list;
         }
     } catch (e) {}
     if (dbStore.registrations) {
-        if (includeResultData) return dbStore.registrations;
-        return dbStore.registrations.map(r => {
-            const { resultData, ...rest } = r;
-            return rest;
-        });
+        let items = dbStore.registrations;
+        if (!includeResultData) {
+            items = items.map(r => {
+                const { resultData, selfieData, ...rest } = r;
+                return rest;
+            });
+        }
+        if (limit > 0) return items.slice(0, limit);
+        return items;
     }
     return [];
 }
 
 async function safeGetEvents() {
+    await ensureDBConnected();
     try {
         if (mongoose.connection.readyState === 1) {
             const evs = await EventModel.find().sort({ _id: -1 }).lean();
@@ -844,35 +853,51 @@ async function safeDeleteAllTemplates() {
 
 let dbConnPromise = null;
 async function ensureDBConnected() {
-    if (mongoose.connection.readyState === 1) return;
+    if (mongoose.connection.readyState === 1) return mongoose.connection;
+    if (mongoose.connection.readyState === 2) {
+        let attempts = 0;
+        while (mongoose.connection.readyState === 2 && attempts < 40) {
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
+        }
+        if (mongoose.connection.readyState === 1) return mongoose.connection;
+    }
     if (!dbConnPromise) {
-        dbConnPromise = connectDB();
+        dbConnPromise = connectDB().finally(() => {
+            dbConnPromise = null;
+        });
     }
     try { await dbConnPromise; } catch(e) {}
+    return mongoose.connection;
 }
 
 async function connectDB() {
     ensureDirs();
+    if (mongoose.connection.readyState === 1) return;
+    if (mongoose.connection.readyState === 2) {
+        let attempts = 0;
+        while (mongoose.connection.readyState === 2 && attempts < 40) {
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
+        }
+        if (mongoose.connection.readyState === 1) return;
+    }
+
     const atlasUri = 'mongodb+srv://aipersona:aipersona@cluster0.g4wl0mi.mongodb.net/aipersona?retryWrites=true&w=majority&appName=Cluster0';
     const mongoUri = process.env.MONGODB_URI || atlasUri;
     try {
-        await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
+        await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000, bufferCommands: false });
         console.log('MongoDB connected successfully via primary URI');
         await initializeDB();
     } catch (err) {
-        console.warn('Primary MONGODB_URI notice:', err.message, 'Trying direct Atlas fallback...');
-        try {
-            await mongoose.connect(atlasUri, { serverSelectionTimeoutMS: 5000 });
-            console.log('MongoDB Atlas connected via direct fallback URI!');
-            await initializeDB();
-        } catch (atlasErr) {
-            console.warn('MongoDB Atlas notice:', atlasErr.message, 'Trying local MongoDB...');
+        console.warn('Primary MONGODB_URI notice:', err.message);
+        if (atlasUri !== mongoUri) {
             try {
-                await mongoose.connect('mongodb://127.0.0.1:27017/ai_persona_app', { serverSelectionTimeoutMS: 3000 });
-                console.log('Local MongoDB connected successfully!');
+                await mongoose.connect(atlasUri, { serverSelectionTimeoutMS: 5000, bufferCommands: false });
+                console.log('MongoDB Atlas connected via direct fallback URI!');
                 await initializeDB();
-            } catch (localErr) {
-                console.warn('Local MongoDB notice:', localErr.message, 'Using persistent Disk DB Store.');
+            } catch (atlasErr) {
+                console.warn('MongoDB Atlas notice:', atlasErr.message);
             }
         }
     }
@@ -899,7 +924,7 @@ async function initializeDB() {
         console.warn("DB init notice:", e.message);
     }
 }
-connectDB();
+dbConnPromise = connectDB().finally(() => { dbConnPromise = null; });
 
 // Dynamic Auto Status Check helper
 function checkEventStatus(event) {
@@ -1053,21 +1078,59 @@ app.post('/api/check-quality', upload.single('selfie'), async (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Dashboard Stats
+// Fast DB ping endpoint for instant DB connection status checks
+app.get('/api/admin/ping', async (req, res) => {
+    await ensureDBConnected();
+    res.json({ ok: true, dbConnected: mongoose.connection.readyState === 1 });
+});
+
+// Optimized Dashboard Stats (Count aggregation + top 50 recent leads for fast loading)
 app.get('/api/admin/stats', async (req, res) => {
-    const regList = await safeGetRegistrations();
-    const evList = await safeGetEvents();
-    const clientList = await safeGetClientUsers();
-    const onlineClients = clientList.filter(c => Boolean(c.activeSessionToken)).length;
-    res.json({
-        totalUsers: regList.length,
-        eventsCount: evList.length,
-        clientsCount: clientList.length,
-        onlineClientsCount: onlineClients,
-        registrations: regList,
-        totalRevenue: (regList.length * 0.80).toFixed(2),
-        popularThemes: dbStore.configs?.analytics?.popularThemes || {}
-    });
+    await ensureDBConnected();
+    try {
+        let totalUsers = 0;
+        let recentRegistrations = [];
+        let eventsCount = 0;
+        let clientsCount = 0;
+        let onlineClients = 0;
+
+        if (mongoose.connection.readyState === 1) {
+            const [uCount, eCount, cCount, onlineCount, recents] = await Promise.all([
+                Registration.countDocuments(),
+                EventModel.countDocuments(),
+                ClientUser.countDocuments(),
+                ClientUser.countDocuments({ activeSessionToken: { $exists: true, $ne: null, $ne: "" } }),
+                Registration.find({}, { resultData: 0, selfieData: 0 }).sort({ _id: -1 }).limit(50).lean()
+            ]);
+            totalUsers = uCount;
+            eventsCount = eCount;
+            clientsCount = cCount;
+            onlineClients = onlineCount;
+            recentRegistrations = recents || [];
+        } else {
+            const regList = await safeGetRegistrations(false, 50);
+            const evList = await safeGetEvents();
+            const clientList = await safeGetClientUsers();
+            totalUsers = regList.length;
+            eventsCount = evList.length;
+            clientsCount = clientList.length;
+            onlineClients = clientList.filter(c => Boolean(c.activeSessionToken)).length;
+            recentRegistrations = regList;
+        }
+
+        res.json({
+            totalUsers,
+            eventsCount,
+            clientsCount,
+            onlineClientsCount: onlineClients,
+            registrations: recentRegistrations,
+            totalRevenue: (totalUsers * 0.80).toFixed(2),
+            popularThemes: dbStore.configs?.analytics?.popularThemes || {}
+        });
+    } catch (e) {
+        console.error("Stats error:", e.message);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // EVENTS Management
@@ -1779,19 +1842,19 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
             if (fileBuf) {
                 try {
                     const compressedBuf = await sharp(fileBuf)
-                        .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
-                        .png({ compressionLevel: 7 })
+                        .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
+                        .jpeg({ quality: 82, mozjpeg: true })
                         .toBuffer();
-                    base64Data = `data:image/png;base64,${compressedBuf.toString('base64')}`;
-                    relUrl = `/uploads/templates/${tId}.png`;
-                    const diskPath = path.join(getUploadDir('templates'), `${tId}.png`);
+                    base64Data = `data:image/jpeg;base64,${compressedBuf.toString('base64')}`;
+                    relUrl = `/uploads/templates/${tId}.jpg`;
+                    const diskPath = path.join(getUploadDir('templates'), `${tId}.jpg`);
                     try { fs.writeFileSync(diskPath, compressedBuf); } catch(e) {}
                 } catch(sharpErr) {
                     console.error("Sharp error on update:", sharpErr.message);
-                    const mime = req.file.mimetype || 'image/png';
+                    const mime = req.file.mimetype || 'image/jpeg';
                     base64Data = `data:${mime};base64,${fileBuf.toString('base64')}`;
-                    relUrl = `/uploads/templates/${tId}.png`;
-                    const diskPath = path.join(getUploadDir('templates'), `${tId}.png`);
+                    relUrl = `/uploads/templates/${tId}.jpg`;
+                    const diskPath = path.join(getUploadDir('templates'), `${tId}.jpg`);
                     try { fs.writeFileSync(diskPath, fileBuf); } catch(e) {}
                 }
             }
@@ -1915,7 +1978,7 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
         await ensureDBConnected();
         const tId = uuidv4();
         let base64Data = '/uploads/templates/default.png';
-        let relUrl = `/uploads/templates/${tId}.png`;
+        let relUrl = `/uploads/templates/${tId}.jpg`;
 
         if (req.file) {
             ensureFileSaved(req.file, 'templates');
@@ -1926,19 +1989,19 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
             if (fileBuf) {
                 try {
                     const compressedBuf = await sharp(fileBuf)
-                        .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
-                        .png({ compressionLevel: 7 })
+                        .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
+                        .jpeg({ quality: 82, mozjpeg: true })
                         .toBuffer();
-                    base64Data = `data:image/png;base64,${compressedBuf.toString('base64')}`;
-                    relUrl = `/uploads/templates/${tId}.png`;
-                    const diskPath = path.join(getUploadDir('templates'), `${tId}.png`);
+                    base64Data = `data:image/jpeg;base64,${compressedBuf.toString('base64')}`;
+                    relUrl = `/uploads/templates/${tId}.jpg`;
+                    const diskPath = path.join(getUploadDir('templates'), `${tId}.jpg`);
                     try { fs.writeFileSync(diskPath, compressedBuf); } catch(e) {}
                 } catch(sharpErr) {
                     console.error("Sharp error on upload:", sharpErr.message);
-                    const mime = req.file.mimetype || 'image/png';
+                    const mime = req.file.mimetype || 'image/jpeg';
                     base64Data = `data:${mime};base64,${fileBuf.toString('base64')}`;
-                    relUrl = `/uploads/templates/${tId}.png`;
-                    const diskPath = path.join(getUploadDir('templates'), `${tId}.png`);
+                    relUrl = `/uploads/templates/${tId}.jpg`;
+                    const diskPath = path.join(getUploadDir('templates'), `${tId}.jpg`);
                     try { fs.writeFileSync(diskPath, fileBuf); } catch(e) {}
                 }
             }
