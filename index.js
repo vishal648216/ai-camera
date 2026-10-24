@@ -428,11 +428,12 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
     }
     
     try {
+        await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
             const filter = all ? {} : { isActive: { $ne: false } };
             const projection = includeBase64 ? {} : { imageData: 0 };
             const queryPromise = Template.find(filter, projection).sort({ sortOrder: 1, _id: -1 }).lean();
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500));
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
             const temps = await Promise.race([queryPromise, timeoutPromise]);
             if (temps && temps.length > 0) {
                 for (const rawT of temps) {
@@ -610,10 +611,16 @@ async function safeSaveTemplate(tData) {
     saveToTemplateConfig(tData);
 
     try {
+        await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
             await Template.updateOne({ id: tData.id }, { $set: tData }, { upsert: true });
+            console.log(`[Templates] Successfully saved template '${tData.name}' (${tData.id}) to MongoDB`);
+        } else {
+            console.warn(`[Templates] MongoDB not ready (state=${mongoose.connection.readyState}), saved to local store.`);
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error(`[Templates] MongoDB save error:`, e.message);
+    }
 }
 
 async function safeDeleteEvent(id) {
@@ -1738,6 +1745,7 @@ app.patch('/api/admin/templates/:id', async (req, res) => {
 });
 app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) => {
     try {
+        await ensureDBConnected();
         const temps = await safeGetTemplates(true, true);
         let t = temps.find(x => x.id === req.params.id);
         if (!t) return res.status(404).json({ error: "Template not found" });
@@ -1888,6 +1896,7 @@ app.put('/api/admin/templates/:id/assign-clients', async (req, res) => {
 });
 app.post('/api/admin/templates', upload.single('template'), async (req, res) => {
     try {
+        await ensureDBConnected();
         const tId = uuidv4();
         let base64Data = '/uploads/templates/default.png';
         let relUrl = `/uploads/templates/${tId}.png`;

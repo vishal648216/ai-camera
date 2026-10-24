@@ -2498,61 +2498,115 @@ async function deleteAllTemplates() {
     }
 }
 
+async function compressTemplateImage(file) {
+    if (!file || !file.type.startsWith('image/')) return file;
+    if (file.size <= 1.2 * 1024 * 1024) return file; // Already small enough
+
+    return new Promise((resolve) => {
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            img.onload = () => {
+                let maxDim = 1920;
+                let w = img.naturalWidth || img.width;
+                let h = img.naturalHeight || img.height;
+                if (w > maxDim || h > maxDim) {
+                    if (w > h) {
+                        h = Math.round((h * maxDim) / w);
+                        w = maxDim;
+                    } else {
+                        w = Math.round((w * maxDim) / h);
+                        h = maxDim;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                canvas.toBlob((blob) => {
+                    if (blob && blob.size < file.size) {
+                        const newFile = new File([blob], file.name.replace(/\.[^.]+$/, '.png'), { type: 'image/png' });
+                        resolve(newFile);
+                    } else {
+                        resolve(file);
+                    }
+                }, 'image/png');
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 document.getElementById('templateForm').onsubmit = async (e) => {
     e.preventDefault();
-    const file = document.getElementById('tmplFile').files[0];
+    const fileInput = document.getElementById('tmplFile');
+    const file = fileInput.files[0];
     if (!currentEditTemplateId && !file) {
         return alert('Please select a template image file.');
     }
 
-    const img = document.getElementById('tmpl-preview-img');
-    const naturalW = img.naturalWidth || 1080;
-    const naturalH = img.naturalHeight || 1080;
-    const clientW = img.clientWidth || 300;
-    const clientH = img.clientHeight || 300;
-    const scaleX = naturalW / clientW;
-    const scaleY = naturalH / clientH;
-
-    const centerX_px = (tmplState.pxX !== undefined ? tmplState.pxX : 100) + (tmplState.pxSize || 100) / 2;
-    const centerY_px = (tmplState.pxY !== undefined ? tmplState.pxY : 100) + (tmplState.pxSize || 100);
-    const personHeight_px = (tmplState.pxSize || 100) * 2;
-
-    let circleX = Math.round(centerX_px * scaleX);
-    let circleY = Math.round(centerY_px * scaleY);
-    let circleSize = Math.round(personHeight_px * scaleY);
-
-    if (isNaN(circleX) || !isFinite(circleX)) circleX = Math.round(naturalW / 2);
-    if (isNaN(circleY) || !isFinite(circleY)) circleY = Math.round(naturalH * 0.75);
-    if (isNaN(circleSize) || !isFinite(circleSize)) circleSize = Math.round(naturalH * 0.35);
-
-    const fd = new FormData();
-    fd.append('name', document.getElementById('tmplName').value);
-    fd.append('mode', document.getElementById('tmplMode').value);
-    const assignedClient = document.getElementById('tmplAssignedClient') ? document.getElementById('tmplAssignedClient').value : 'all';
-    fd.append('assignedClients', assignedClient);
-    if (file) fd.append('template', file);
-    fd.append('maskShape', 'circle');
-    fd.append('imgW', naturalW);
-    fd.append('imgH', naturalH);
-    fd.append('circleX', circleX);
-    fd.append('circleY', circleY);
-    fd.append('circleSize', circleSize);
-    
     const btn = document.getElementById('uploadBtn');
-    btn.disabled = true; btn.innerText = 'Saving...';
-    const url = currentEditTemplateId ? `${API}/api/admin/templates/${currentEditTemplateId}` : `${API}/api/admin/templates`;
-    const method = currentEditTemplateId ? 'PUT' : 'POST';
+    btn.disabled = true; btn.innerText = 'Publishing Theme...';
+
     try {
+        const img = document.getElementById('tmpl-preview-img');
+        const naturalW = img.naturalWidth || 1080;
+        const naturalH = img.naturalHeight || 1080;
+        const clientW = img.clientWidth || 300;
+        const clientH = img.clientHeight || 300;
+        const scaleX = naturalW / clientW;
+        const scaleY = naturalH / clientH;
+
+        const centerX_px = (tmplState.pxX !== undefined ? tmplState.pxX : 100) + (tmplState.pxSize || 100) / 2;
+        const centerY_px = (tmplState.pxY !== undefined ? tmplState.pxY : 100) + (tmplState.pxSize || 100);
+        const personHeight_px = (tmplState.pxSize || 100) * 2;
+
+        let circleX = Math.round(centerX_px * scaleX);
+        let circleY = Math.round(centerY_px * scaleY);
+        let circleSize = Math.round(personHeight_px * scaleY);
+
+        if (isNaN(circleX) || !isFinite(circleX)) circleX = Math.round(naturalW / 2);
+        if (isNaN(circleY) || !isFinite(circleY)) circleY = Math.round(naturalH * 0.75);
+        if (isNaN(circleSize) || !isFinite(circleSize)) circleSize = Math.round(naturalH * 0.35);
+
+        const fd = new FormData();
+        fd.append('name', document.getElementById('tmplName').value);
+        fd.append('mode', document.getElementById('tmplMode').value);
+        const assignedClient = document.getElementById('tmplAssignedClient') ? document.getElementById('tmplAssignedClient').value : 'all';
+        fd.append('assignedClients', assignedClient);
+        
+        if (file) {
+            btn.innerText = 'Optimizing Image...';
+            const compressed = await compressTemplateImage(file);
+            fd.append('template', compressed);
+        }
+        
+        fd.append('maskShape', 'circle');
+        fd.append('imgW', naturalW);
+        fd.append('imgH', naturalH);
+        fd.append('circleX', circleX);
+        fd.append('circleY', circleY);
+        fd.append('circleSize', circleSize);
+        
+        btn.innerText = 'Saving to Database...';
+        const url = currentEditTemplateId ? `${API}/api/admin/templates/${currentEditTemplateId}` : `${API}/api/admin/templates`;
+        const method = currentEditTemplateId ? 'PUT' : 'POST';
+        
         const res = await fetch(url, { method, body: fd });
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
             throw new Error(errData.error || `Server error ${res.status}`);
         }
+        const savedData = await res.json();
+        
         const modalEl = document.getElementById('uploadModal');
         const modalInst = bootstrap.Modal.getOrCreateInstance(modalEl);
         modalInst.hide();
         await fetchTemplates();
         await fetchClients();
+        alert(`Theme "${savedData.name || 'Template'}" published and saved successfully!`);
     } catch(err) { 
         alert('Error saving template: ' + err.message); 
     } finally { 
