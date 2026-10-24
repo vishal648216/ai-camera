@@ -1074,6 +1074,9 @@ async function checkDbStatus() {
 // ===== ROUTING =====
 function switchSection(target) {
     if (!target) return;
+    if (window.location.hash !== '#' + target) {
+        try { history.replaceState(null, '', '#' + target); } catch(e) {}
+    }
     document.querySelectorAll('section').forEach(s => s.classList.add('d-none'));
     const targetEl = document.getElementById(target);
     if (targetEl) targetEl.classList.remove('d-none');
@@ -2268,7 +2271,7 @@ async function generateInvoice(id) {
 // ===== TEMPLATES =====
 async function fetchTemplates() {
     try {
-        const res = await fetch(`${API}/api/admin/templates`);
+        const res = await fetch(`${API}/api/admin/templates?_t=${Date.now()}`, { cache: 'no-store' });
         const temps = await res.json();
         _allTemplates = temps;
         if (!temps.length) {
@@ -3452,7 +3455,8 @@ if (btnConfirmDel) {
     btnConfirmDel.onclick = () => executeDeleteLead(_leadToDeleteId);
 }
 checkDbStatus();
-refreshStats();
+const initialSec = (window.location.hash ? window.location.hash.replace('#', '') : '') || 'dashboard';
+switchSection(initialSec);
 </script>
 </body>
 </html>

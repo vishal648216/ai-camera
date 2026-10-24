@@ -131,10 +131,11 @@ app.use('/uploads', async (req, res) => {
 
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
-app.get('/admin', (req, res) => {
+app.get(['/admin', '/admin.html'], (req, res) => {
     try {
         const adminPath = path.resolve(__dirname, 'public', 'admin.html');
         res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.send(fs.readFileSync(adminPath, 'utf8'));
     } catch (e) { res.status(500).send("Error loading admin: " + e.message); }
 });
@@ -457,9 +458,7 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
         if (mongoose.connection.readyState === 1) {
             const filter = all ? {} : { isActive: { $ne: false } };
             const projection = includeBase64 ? {} : { imageData: 0 };
-            const queryPromise = Template.find(filter, projection).sort({ sortOrder: 1, _id: -1 }).lean();
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
-            const temps = await Promise.race([queryPromise, timeoutPromise]);
+            const temps = await Template.find(filter, projection).sort({ _id: -1 }).lean();
             if (temps && temps.length > 0) {
                 for (const rawT of temps) {
                     const tid = rawT.id || (rawT._id ? rawT._id.toString() : '');
@@ -471,7 +470,7 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
             }
         }
     } catch (e) {
-        // Fallback to local/cached templates immediately
+        console.error("MongoDB safeGetTemplates error:", e.message);
     }
 
     let list = Array.from(tempMap.values());
@@ -1806,6 +1805,7 @@ app.get('/api/templates', async (req, res) => {
 
 app.get('/api/admin/templates', async (req, res) => {
     try {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         const temps = await safeGetTemplates(true, false);
         res.json(temps);
     } catch(err) {
