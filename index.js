@@ -1661,13 +1661,13 @@ app.get('/api/templates', async (req, res) => {
             const clientUsername = String(clientUser.username || '').toLowerCase();
 
             activeTemps = activeTemps.filter(t => {
-                // 1. If this template is explicitly assigned to specific client(s):
+                // 1. If this template is explicitly assigned to other client(s), hide it:
                 if (Array.isArray(t.assignedClients) && t.assignedClients.length > 0 && !t.assignedClients.includes('all')) {
                     const isForThisClient = t.assignedClients.some(c => String(c) === clientId || String(c).toLowerCase() === clientUsername);
-                    return isForThisClient;
+                    if (!isForThisClient) return false;
                 }
 
-                // 2. If template is public, but client has allowedTemplates whitelist configured:
+                // 2. If client has an allowedTemplates whitelist configured, ONLY show templates in that list:
                 if (Array.isArray(clientUser.allowedTemplates) && clientUser.allowedTemplates.length > 0) {
                     return clientUser.allowedTemplates.includes(String(t.id));
                 }

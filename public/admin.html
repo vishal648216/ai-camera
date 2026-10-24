@@ -150,6 +150,32 @@
             border-radius: 8px;
             background: #000;
         }
+        .user-theme-card {
+            background: rgba(18, 20, 38, 0.7);
+            border: 2px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            position: relative;
+        }
+        .user-theme-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(0, 242, 254, 0.4);
+        }
+        .user-theme-card.allowed {
+            border-color: #00f2fe;
+            box-shadow: 0 0 16px rgba(0, 242, 254, 0.35);
+            background: rgba(0, 242, 254, 0.06);
+        }
+        .user-theme-card.restricted {
+            opacity: 0.65;
+            filter: grayscale(20%);
+        }
+        .user-theme-card.restricted:hover {
+            opacity: 0.9;
+            filter: none;
+        }
     </style>
 </head>
 <body>
@@ -161,6 +187,7 @@
     <div class="mt-4">
         <div class="nav-link active" data-sec="dashboard" onclick="switchSection('dashboard')"><i class="fas fa-chart-pie me-3"></i> Dashboard</div>
         <div class="nav-link" data-sec="clients" onclick="switchSection('clients')"><i class="fas fa-users-cog me-3"></i> Rental Clients <span id="sidebarOnlineBadge" class="badge bg-success ms-auto d-none">0</span></div>
+        <div class="nav-link" data-sec="user-themes" onclick="switchSection('user-themes')"><i class="fas fa-user-lock me-3"></i> User Theme Access</div>
         <div class="nav-link" data-sec="events" onclick="switchSection('events')"><i class="fas fa-calendar-check me-3"></i> Manage Events</div>
         <div class="nav-link" data-sec="templates" onclick="switchSection('templates')"><i class="fas fa-palette me-3"></i> Templates & Themes</div>
         <div class="nav-link" data-sec="leads" onclick="switchSection('leads')"><i class="fas fa-images me-3"></i> Photos & Billing</div>
@@ -307,6 +334,62 @@
                         <tr><td colspan="9" class="text-center text-secondary py-4">Loading rental clients...</td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- User Theme Access Section -->
+    <section id="user-themes" class="d-none">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+            <div>
+                <h1 class="fw-bold mb-1"><i class="fas fa-user-lock text-info me-2"></i>User Theme Access</h1>
+                <p class="text-secondary mb-0">Select a rental user profile to choose which themes will be accessible in their photobooth terminal.</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-outline-info" onclick="initUserThemesSection()"><i class="fas fa-sync-alt me-1"></i>Refresh</button>
+            </div>
+        </div>
+
+        <!-- User Selector Card -->
+        <div class="glass-card p-4 mb-4" style="border: 1px solid rgba(0,242,254,0.3); background: rgba(17,17,43,0.85);">
+            <div class="row align-items-center g-3">
+                <div class="col-md-5">
+                    <label class="form-label small text-info fw-bold mb-1"><i class="fas fa-user me-1"></i>TARGET USER / CLIENT PROFILE</label>
+                    <select id="userThemesClientSelect" class="form-select bg-dark text-white border-secondary fs-6 py-2" onchange="onUserThemeClientChanged(this.value)">
+                        <option value="">-- Choose User --</option>
+                    </select>
+                </div>
+                <div class="col-md-7">
+                    <div id="userThemeClientDetails" class="d-flex flex-wrap align-items-center gap-3 p-3 rounded bg-black bg-opacity-40 border border-secondary border-opacity-25" style="min-height: 58px;">
+                        <span class="text-secondary small">Select a user above to view their details and theme permissions.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls Toolbar -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-white fs-5" id="userThemesGridTitle">Available Themes</span>
+                <span class="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 px-3 py-2" id="userThemesCountBadge">0 / 0 Selected</span>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAllUserThemes(true)"><i class="fas fa-check-double me-1"></i>Select All</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAllUserThemes(false)"><i class="fas fa-times me-1"></i>Deselect All</button>
+                <button type="button" class="btn btn-sm btn-outline-warning" onclick="resetUserThemesToDefault()"><i class="fas fa-globe me-1"></i>All Themes (Default Public)</button>
+                <button type="button" class="btn btn-info px-4 fw-bold shadow" id="btnSaveUserThemes" onclick="saveUserThemeAccess()"><i class="fas fa-save me-2"></i>Save Theme Access</button>
+            </div>
+        </div>
+
+        <div class="alert alert-info py-2 px-3 small border-0 bg-info bg-opacity-10 text-info mb-4">
+            <i class="fas fa-info-circle me-1"></i> <b>How it works:</b> Click on any theme card below to toggle access for the selected user. If you select only <b>Theme #2 (12th Inspire Manak Exhibition)</b>, that user will <b>only</b> see Theme #2 when they log into their booth terminal!
+        </div>
+
+        <!-- Theme Grid -->
+        <div class="row g-4" id="userThemesGrid">
+            <div class="col-12 text-center text-secondary py-5">
+                <div class="spinner-border text-info mb-2"></div>
+                <p>Loading themes...</p>
             </div>
         </div>
     </section>
@@ -994,6 +1077,7 @@ function switchSection(target) {
     });
     if (target === 'dashboard') refreshStats();
     if (target === 'clients') fetchClients();
+    if (target === 'user-themes') initUserThemesSection();
     if (target === 'events') fetchEvents();
     if (target === 'templates') fetchTemplates();
     if (target === 'leads') fetchLeads();
@@ -1539,6 +1623,245 @@ window.toggleAssignTemplateItem = toggleAssignTemplateItem;
 window.toggleSelectAllTemplates = toggleSelectAllTemplates;
 window.filterAssignTemplatesList = filterAssignTemplatesList;
 window.saveAssignedTemplates = saveAssignedTemplates;
+
+// ===== DEDICATED USER THEME ACCESS CONTROLLER =====
+let _userThemeCurrentClientId = null;
+let _userThemeAllowedIds = new Set();
+
+async function initUserThemesSection() {
+    if (!_allClients || _allClients.length === 0) {
+        await fetchClients();
+    }
+    if (!_allTemplates || _allTemplates.length === 0) {
+        try {
+            const res = await fetch(`${API}/api/admin/templates`);
+            _allTemplates = await res.json();
+        } catch(e) {
+            _allTemplates = [];
+        }
+    }
+
+    const sel = document.getElementById('userThemesClientSelect');
+    if (sel) {
+        let html = '';
+        (_allClients || []).forEach(c => {
+            const assignedCount = Array.isArray(c.allowedTemplates) ? c.allowedTemplates.length : 0;
+            const countLabel = assignedCount === 0 ? 'All Themes Allowed (Default)' : `${assignedCount} Theme(s) Allowed`;
+            html += `<option value="${c.id}">👤 ${escapeHtml(c.name || c.username)} (@${escapeHtml(c.username)}) — [${countLabel}]</option>`;
+        });
+        sel.innerHTML = html;
+        if (!_userThemeCurrentClientId && _allClients && _allClients.length > 0) {
+            _userThemeCurrentClientId = _allClients[0].id;
+        }
+        if (_userThemeCurrentClientId) {
+            sel.value = _userThemeCurrentClientId;
+        }
+    }
+
+    onUserThemeClientChanged(_userThemeCurrentClientId);
+}
+
+function onUserThemeClientChanged(clientId) {
+    _userThemeCurrentClientId = clientId;
+    const client = (_allClients || []).find(c => c.id === clientId);
+    const detailsEl = document.getElementById('userThemeClientDetails');
+
+    if (!client) {
+        if (detailsEl) detailsEl.innerHTML = '<span class="text-secondary small">No user selected.</span>';
+        _userThemeAllowedIds.clear();
+        renderUserThemesGrid();
+        return;
+    }
+
+    _userThemeAllowedIds = new Set(Array.isArray(client.allowedTemplates) ? client.allowedTemplates.map(String) : []);
+
+    const isOnline = !!client.activeSessionToken;
+    const assignedCount = _userThemeAllowedIds.size;
+    const totalCount = (_allTemplates || []).length;
+
+    if (detailsEl) {
+        detailsEl.innerHTML = `
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge ${isOnline ? 'bg-success' : 'bg-secondary'} rounded-pill px-2 py-1" style="font-size:11px;">
+                    <i class="fas ${isOnline ? 'fa-signal' : 'fa-power-off'} me-1"></i>${isOnline ? 'Active Online Terminal' : 'Offline'}
+                </span>
+                <span class="text-white fw-bold fs-6">${escapeHtml(client.name || client.username)}</span>
+                <span class="badge bg-dark border border-secondary text-info font-monospace">@${escapeHtml(client.username)}</span>
+            </div>
+            <div class="vr bg-secondary opacity-50 d-none d-md-block" style="height:24px;"></div>
+            <div class="small text-secondary">
+                <i class="fas fa-calendar-alt text-info me-1"></i>Event: <b class="text-white">${escapeHtml(client.eventName || 'General Event')}</b>
+            </div>
+            <div class="vr bg-secondary opacity-50 d-none d-md-block" style="height:24px;"></div>
+            <div>
+                ${assignedCount === 0
+                    ? `<span class="badge bg-secondary bg-opacity-25 text-white-50 border border-secondary border-opacity-25 px-2 py-1"><i class="fas fa-globe me-1"></i>All Themes Visible (Default Public)</span>`
+                    : `<span class="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 px-2 py-1"><i class="fas fa-lock me-1"></i>Strict Mode: ${assignedCount} of ${totalCount} Allowed</span>`
+                }
+            </div>
+        `;
+    }
+
+    renderUserThemesGrid();
+}
+
+function renderUserThemesGrid() {
+    const grid = document.getElementById('userThemesGrid');
+    if (!grid) return;
+
+    const client = (_allClients || []).find(c => c.id === _userThemeCurrentClientId);
+    const clientName = client ? (client.name || client.username) : 'Selected User';
+
+    const countBadge = document.getElementById('userThemesCountBadge');
+    const totalCount = (_allTemplates || []).length;
+    const selCount = _userThemeAllowedIds.size;
+
+    if (countBadge) {
+        if (selCount === 0) {
+            countBadge.innerText = `All Themes (Default Public Access)`;
+            countBadge.className = 'badge bg-secondary bg-opacity-25 text-white-50 border border-secondary border-opacity-25 px-3 py-2';
+        } else {
+            countBadge.innerText = `${selCount} of ${totalCount} Allowed for ${clientName}`;
+            countBadge.className = 'badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 px-3 py-2 fw-bold';
+        }
+    }
+
+    if (!totalCount) {
+        grid.innerHTML = '<div class="col-12 text-center text-secondary py-5">No templates found. Go to Templates & Themes to upload templates.</div>';
+        return;
+    }
+
+    grid.innerHTML = (_allTemplates || []).map((t, idx) => {
+        const themeNumber = idx + 1;
+        const isAllowed = _userThemeAllowedIds.has(String(t.id));
+        const displayImg = t.imageUrl || (t.imageData && t.imageData.startsWith('data:image') ? t.imageData : '/uploads/templates/default.png');
+        const modeBadge = t.mode === 'backdrop' ? '<span class="badge bg-primary" style="font-size:10px;">Full Body</span>' : '<span class="badge bg-warning text-dark" style="font-size:10px;">Face Swap</span>';
+
+        return `
+            <div class="col-lg-3 col-md-4 col-sm-6">
+                <div class="user-theme-card ${isAllowed ? 'allowed' : 'restricted'}" onclick="toggleUserThemeCard('${t.id}')">
+                    <div class="position-relative bg-black" style="height: 190px; overflow:hidden;">
+                        <img src="${displayImg}" class="w-100 h-100" style="object-fit:cover;" onerror="this.src='/uploads/templates/default.png';" alt="${escapeHtml(t.name)}">
+                        
+                        <!-- Theme Number Badge -->
+                        <div class="position-absolute top-0 start-0 m-2" style="z-index:3;">
+                            <span class="badge bg-dark bg-opacity-90 text-info border border-info border-opacity-50 px-2 py-1 fw-bold fs-6">
+                                #${themeNumber}
+                            </span>
+                        </div>
+
+                        <!-- Mode Badge -->
+                        <div class="position-absolute top-0 end-0 m-2" style="z-index:3;">
+                            ${modeBadge}
+                        </div>
+
+                        <!-- Status Overlay Badge -->
+                        <div class="position-absolute bottom-0 start-0 end-0 p-2 text-center" style="background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); z-index:3;">
+                            ${isAllowed 
+                                ? `<span class="badge bg-success text-white px-2 py-1 fw-bold"><i class="fas fa-check-circle me-1"></i>ALLOWED FOR ${escapeHtml(clientName.toUpperCase())}</span>`
+                                : `<span class="badge bg-secondary text-white-50 px-2 py-1"><i class="fas fa-ban me-1"></i>RESTRICTED / HIDDEN</span>`
+                            }
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <div class="d-flex justify-content-between align-items-start mb-1">
+                            <b class="text-white text-truncate me-2" style="font-size:14px;" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</b>
+                            <input type="checkbox" class="form-check-input mt-0" ${isAllowed ? 'checked' : ''} onclick="event.stopPropagation(); toggleUserThemeCard('${t.id}')" style="cursor:pointer; transform:scale(1.2);">
+                        </div>
+                        <small class="text-secondary opacity-75 d-block text-truncate mb-2" style="font-size:11px;">${escapeHtml(t.desc || 'Event Template')}</small>
+                        <div class="pt-2 border-top border-secondary border-opacity-10 d-flex justify-content-between align-items-center">
+                            <span class="badge bg-dark text-info border border-secondary border-opacity-25" style="font-size:10px;">Click card to toggle</span>
+                            <span class="small ${isAllowed ? 'text-success fw-bold' : 'text-secondary'}" style="font-size:11px;">${isAllowed ? 'Active' : 'Locked'}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function toggleUserThemeCard(templateId) {
+    if (!templateId) return;
+    const tid = String(templateId);
+    if (_userThemeAllowedIds.has(tid)) {
+        _userThemeAllowedIds.delete(tid);
+    } else {
+        _userThemeAllowedIds.add(tid);
+    }
+    renderUserThemesGrid();
+}
+
+function toggleSelectAllUserThemes(selectAll) {
+    if (selectAll) {
+        _userThemeAllowedIds = new Set((_allTemplates || []).map(t => String(t.id)));
+    } else {
+        _userThemeAllowedIds.clear();
+    }
+    renderUserThemesGrid();
+}
+
+function resetUserThemesToDefault() {
+    _userThemeAllowedIds.clear();
+    renderUserThemesGrid();
+    alert('Cleared all custom theme restrictions for this user. Now all public templates will be visible (Default). Click "Save Theme Access" to apply.');
+}
+
+async function saveUserThemeAccess() {
+    if (!_userThemeCurrentClientId) return alert('Please select a user first.');
+    const client = (_allClients || []).find(c => c.id === _userThemeCurrentClientId);
+    if (!client) return alert('Client not found.');
+
+    const allowedTemplates = Array.from(_userThemeAllowedIds);
+    const btn = document.getElementById('btnSaveUserThemes');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+    }
+
+    try {
+        const res = await fetch(`${API}/api/admin/clients/${_userThemeCurrentClientId}/templates`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ allowedTemplates })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Failed to save theme permissions');
+        }
+
+        client.allowedTemplates = allowedTemplates;
+        const sel = document.getElementById('userThemesClientSelect');
+        if (sel) {
+            const opt = sel.querySelector(`option[value="${_userThemeCurrentClientId}"]`);
+            if (opt) {
+                const countLabel = allowedTemplates.length === 0 ? 'All Themes Allowed (Default)' : `${allowedTemplates.length} Theme(s) Allowed`;
+                opt.text = `👤 ${client.name || client.username} (@${client.username}) — [${countLabel}]`;
+            }
+        }
+
+        renderClientsTable();
+        onUserThemeClientChanged(_userThemeCurrentClientId);
+
+        const summaryMsg = allowedTemplates.length === 0 
+            ? `Default Public Access Enabled! All themes will show for ${client.name || client.username}.`
+            : `Theme Access Saved! User ${client.name || client.username} can now ONLY access the ${allowedTemplates.length} selected theme(s).`;
+        alert(`Success!\n\n${summaryMsg}`);
+    } catch(err) {
+        alert('Save Error: ' + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save me-2"></i>Save Theme Access';
+        }
+    }
+}
+
+window.initUserThemesSection = initUserThemesSection;
+window.onUserThemeClientChanged = onUserThemeClientChanged;
+window.toggleUserThemeCard = toggleUserThemeCard;
+window.toggleSelectAllUserThemes = toggleSelectAllUserThemes;
+window.resetUserThemesToDefault = resetUserThemesToDefault;
+window.saveUserThemeAccess = saveUserThemeAccess;
 
 function togglePasswordVisibility(id, pwd) {
     const el = document.getElementById(`pwd-val-${id}`);
