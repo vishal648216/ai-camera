@@ -193,6 +193,146 @@ const EventModel = mongoose.model('Event', eventSchema);
 const configSchema = new mongoose.Schema({ id: { type: String, default: 'main' }, analytics: { type: Object, default: { totalGens: 0, failovers: 0, popularThemes: {} } }, settings: { type: Object, default: {} } }, { strict: false });
 const Config = mongoose.model('Config', configSchema);
 
+// Rental Client / User Model for single-device booth rentals
+const clientUserSchema = new mongoose.Schema({
+    id: { type: String, unique: true },
+    username: { type: String, unique: true, lowercase: true, trim: true },
+    password: { type: String, required: true },
+    name: { type: String, default: 'Rental Client' },
+    phone: { type: String, default: '' },
+    eventId: { type: String, default: 'default' },
+    eventName: { type: String, default: 'General Event' },
+    pricePerPhoto: { type: Number, default: 0.80 },
+    activeSessionToken: { type: String, default: null },
+    status: { type: String, default: 'active' }, // 'active' | 'disabled'
+    allowedTemplates: { type: [String], default: [] },
+    lastLoginAt: { type: String, default: null },
+    lastActiveAt: { type: String, default: null },
+    createdAt: { type: String }
+}, { strict: false });
+clientUserSchema.index({ username: 1 });
+clientUserSchema.index({ activeSessionToken: 1 });
+const ClientUser = mongoose.model('ClientUser', clientUserSchema);
+
+async function safeGetClientUsers() {
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const list = await ClientUser.find().sort({ _id: -1 }).lean();
+            if (list && list.length > 0) return list;
+            // If Mongo is empty but dbStore has users, persist them to Mongo
+            if (dbStore.clientUsers && dbStore.clientUsers.length > 0) {
+                for (const u of dbStore.clientUsers) {
+                    await ClientUser.updateOne({ id: u.id }, { $set: u }, { upsert: true }).catch(() => {});
+                }
+                return dbStore.clientUsers;
+            }
+        }
+    } catch (e) {}
+    return dbStore.clientUsers || [];
+}
+
+async function safeGetClientUserById(id) {
+    if (!id) return null;
+    const targetId = String(id).trim();
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const conditions = [{ id: targetId }];
+            if (mongoose.Types.ObjectId.isValid(targetId) && targetId.length === 24) {
+                conditions.push({ _id: new mongoose.Types.ObjectId(targetId) });
+            }
+            const query = (conditions.length > 1) ? { $or: conditions } : conditions[0];
+            const u = await ClientUser.findOne(query).lean();
+            if (u) return u;
+        }
+    } catch(e) {}
+    return (dbStore.clientUsers || []).find(u => String(u.id) === targetId || String(u._id) === targetId) || null;
+}
+
+async function safeGetClientUserByUsername(username) {
+    if (!username) return null;
+    const uname = String(username).toLowerCase().trim();
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const u = await ClientUser.findOne({ username: uname }).lean();
+            if (u) return u;
+        }
+    } catch(e) {}
+    return (dbStore.clientUsers || []).find(u => String(u.username || '').toLowerCase().trim() === uname) || null;
+}
+
+async function safeGetClientUserBySessionToken(token) {
+    if (!token) return null;
+    const tok = String(token).trim();
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const u = await ClientUser.findOne({ activeSessionToken: tok }).lean();
+            if (u) return u;
+        }
+    } catch(e) {}
+    return (dbStore.clientUsers || []).find(u => String(u.activeSessionToken || '').trim() === tok) || null;
+}
+
+async function safeSaveClientUser(userData) {
+    if (!userData || !userData.id) return;
+    if (!dbStore.clientUsers) dbStore.clientUsers = [];
+    const idx = dbStore.clientUsers.findIndex(u => u.id === userData.id || u.username === userData.username);
+    if (idx >= 0) dbStore.clientUsers[idx] = userData;
+    else dbStore.clientUsers.unshift(userData);
+    saveDbStore();
+
+    try {
+        if (mongoose.connection.readyState === 1) {
+            await ClientUser.updateOne({ id: userData.id }, { $set: userData }, { upsert: true });
+        }
+    } catch (e) {}
+}
+
+async function safeDeleteClientUser(id) {
+    if (!id) return;
+    const targetId = String(id).trim();
+    if (dbStore.clientUsers) {
+        dbStore.clientUsers = dbStore.clientUsers.filter(u => String(u.id) !== targetId && String(u._id) !== targetId);
+        saveDbStore();
+    }
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const conditions = [{ id: targetId }];
+            if (mongoose.Types.ObjectId.isValid(targetId) && targetId.length === 24) {
+                conditions.push({ _id: new mongoose.Types.ObjectId(targetId) });
+            }
+            const query = (conditions.length > 1) ? { $or: conditions } : conditions[0];
+            await ClientUser.deleteMany(query);
+        }
+    } catch (e) {}
+}
+
+async function ensureDefaultClientUser() {
+    try {
+        const users = await safeGetClientUsers();
+        if (!users || users.length === 0) {
+            const defUser = {
+                id: 'client_' + uuidv4().substring(0, 8),
+                username: 'client1',
+                password: 'password123',
+                name: 'Demo Rental Client (Booth 1)',
+                phone: '9876543210',
+                eventId: 'default',
+                eventName: 'General Event',
+                pricePerPhoto: 0.80,
+                activeSessionToken: null,
+                status: 'active',
+                allowedTemplates: [],
+                lastLoginAt: null,
+                lastActiveAt: null,
+                createdAt: new Date().toISOString()
+            };
+            await safeSaveClientUser(defUser);
+            console.log('[Auth] Initialized default rental client: username=client1, password=password123');
+        }
+    } catch(e) {}
+}
+ensureDefaultClientUser();
+
 async function safeGetRegistrations(includeResultData = false) {
     try {
         if (mongoose.connection.readyState === 1) {
@@ -722,6 +862,7 @@ async function initializeDB() {
             }
             console.log("Seeded initial default templates into DB");
         }
+        await ensureDefaultClientUser();
     } catch (e) {
         console.warn("DB init notice:", e.message);
     }
@@ -884,9 +1025,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/admin/stats', async (req, res) => {
     const regList = await safeGetRegistrations();
     const evList = await safeGetEvents();
+    const clientList = await safeGetClientUsers();
+    const onlineClients = clientList.filter(c => Boolean(c.activeSessionToken)).length;
     res.json({
         totalUsers: regList.length,
         eventsCount: evList.length,
+        clientsCount: clientList.length,
+        onlineClientsCount: onlineClients,
         registrations: regList,
         totalRevenue: (regList.length * 0.80).toFixed(2),
         popularThemes: dbStore.configs?.analytics?.popularThemes || {}
@@ -1002,7 +1147,344 @@ app.get('/api/admin/leads', async (req, res) => {
     if (req.query.eventId && req.query.eventId !== 'all') {
         list = list.filter(r => r.eventId === req.query.eventId);
     }
+    if (req.query.clientId && req.query.clientId !== 'all') {
+        list = list.filter(r => String(r.clientId) === req.query.clientId || String(r.clientUsername) === req.query.clientId);
+    }
     res.json(list);
+});
+
+// ==========================================
+// RENTAL CLIENT AUTHENTICATION (SINGLE ACTIVE DEVICE)
+// ==========================================
+
+// Client Login: Enforces ONLY ONE active device session
+app.post('/api/auth/client-login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ success: false, error: 'Username and password are required' });
+        }
+
+        const user = await safeGetClientUserByUsername(username);
+        if (!user || String(user.password).trim() !== String(password).trim()) {
+            return res.status(401).json({ success: false, error: 'Invalid username or password' });
+        }
+
+        if (user.status !== 'active') {
+            return res.status(403).json({ success: false, error: 'Your booth rental account is currently disabled. Please contact Admin.' });
+        }
+
+        // Generate brand new unique session token.
+        // This IMMEDIATELY kicks out any previously logged-in device!
+        const newSessionToken = 'sess_' + uuidv4();
+        user.activeSessionToken = newSessionToken;
+        user.lastLoginAt = new Date().toISOString();
+        user.lastActiveAt = new Date().toISOString();
+        await safeSaveClientUser(user);
+
+        // Fetch latest event name
+        let eventName = user.eventName || 'General Event';
+        if (user.eventId && user.eventId !== 'default') {
+            const evs = await safeGetEvents();
+            const foundEv = evs.find(e => e.id === user.eventId);
+            if (foundEv) eventName = foundEv.name;
+        }
+
+        console.log(`[Auth] Client '${user.username}' logged in successfully. Active session: ${newSessionToken}`);
+
+        res.json({
+            success: true,
+            token: newSessionToken,
+            user: {
+                id: user.id,
+                username: user.username,
+                name: user.name,
+                phone: user.phone || '',
+                eventId: user.eventId || 'default',
+                eventName: eventName,
+                pricePerPhoto: user.pricePerPhoto ?? 0.80
+            }
+        });
+    } catch(e) {
+        console.error("Client login error:", e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Client Verify / Heartbeat: Check if this session is still the single active device
+app.get('/api/auth/client-verify', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        const token = (authHeader && authHeader.startsWith('Bearer '))
+            ? authHeader.substring(7).trim()
+            : (req.query.token || '').trim();
+
+        if (!token) {
+            return res.status(401).json({ success: false, code: 'NO_TOKEN', error: 'Authentication token missing' });
+        }
+
+        const user = await safeGetClientUserBySessionToken(token);
+        if (!user) {
+            // Session was replaced by a newer login from another device or was kicked out by admin!
+            return res.status(401).json({
+                success: false,
+                code: 'SESSION_INVALIDATED',
+                error: 'Account logged in on another device! You have been automatically logged out from this device.'
+            });
+        }
+
+        if (user.status !== 'active') {
+            return res.status(403).json({
+                success: false,
+                code: 'ACCOUNT_DISABLED',
+                error: 'Your rental account has been disabled by Admin.'
+            });
+        }
+
+        // Update last active time
+        user.lastActiveAt = new Date().toISOString();
+        await safeSaveClientUser(user);
+
+        let eventName = user.eventName || 'General Event';
+        if (user.eventId && user.eventId !== 'default') {
+            const evs = await safeGetEvents();
+            const foundEv = evs.find(e => e.id === user.eventId);
+            if (foundEv) eventName = foundEv.name;
+        }
+
+        res.json({
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
+                name: user.name,
+                phone: user.phone || '',
+                eventId: user.eventId || 'default',
+                eventName: eventName,
+                pricePerPhoto: user.pricePerPhoto ?? 0.80
+            }
+        });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Client Logout
+app.post('/api/auth/client-logout', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        const token = (authHeader && authHeader.startsWith('Bearer '))
+            ? authHeader.substring(7).trim()
+            : (req.body && req.body.token ? String(req.body.token).trim() : '');
+
+        if (token) {
+            const user = await safeGetClientUserBySessionToken(token);
+            if (user) {
+                user.activeSessionToken = null;
+                await safeSaveClientUser(user);
+                console.log(`[Auth] Client '${user.username}' logged out.`);
+            }
+        }
+        res.json({ success: true });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==========================================
+// ADMIN RENTAL CLIENT MANAGEMENT APIS
+// ==========================================
+
+// Get All Clients with Live Photo Counts & Revenue
+app.get('/api/admin/clients', async (req, res) => {
+    try {
+        const clients = await safeGetClientUsers();
+        const regList = await safeGetRegistrations();
+
+        const data = clients.map(c => {
+            const clientRegs = regList.filter(r => r.clientId === c.id || r.clientUsername === c.username);
+            const photoCount = clientRegs.length;
+            const rate = c.pricePerPhoto ?? 0.80;
+            const totalBill = (photoCount * rate).toFixed(2);
+            const isOnline = Boolean(c.activeSessionToken);
+
+            return {
+                id: c.id,
+                _id: c._id,
+                username: c.username,
+                password: c.password,
+                name: c.name,
+                phone: c.phone || '',
+                eventId: c.eventId || 'default',
+                eventName: c.eventName || 'General Event',
+                pricePerPhoto: rate,
+                status: c.status || 'active',
+                allowedTemplates: c.allowedTemplates || [],
+                isOnline,
+                activeSessionToken: c.activeSessionToken,
+                lastLoginAt: c.lastLoginAt,
+                lastActiveAt: c.lastActiveAt,
+                createdAt: c.createdAt,
+                photoCount,
+                totalBill
+            };
+        });
+
+        res.json({ success: true, clients: data });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Create New Rental Client
+app.post('/api/admin/clients', async (req, res) => {
+    try {
+        const { username, password, name, phone, eventId, eventName: reqEventName, ratePerPhoto, pricePerPhoto, status, allowedTemplates } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ success: false, error: 'Username and password are required' });
+        }
+
+        const cleanUsername = String(username).toLowerCase().trim();
+        const existing = await safeGetClientUserByUsername(cleanUsername);
+        if (existing) {
+            return res.status(400).json({ success: false, error: `Username '${cleanUsername}' already exists. Choose a different username.` });
+        }
+
+        let evName = reqEventName ? String(reqEventName).trim() : 'General Event';
+        if (!reqEventName && eventId && eventId !== 'default') {
+            const evs = await safeGetEvents();
+            const foundEv = evs.find(e => e.id === eventId);
+            if (foundEv) evName = foundEv.name;
+        }
+
+        const effectiveRate = (ratePerPhoto !== undefined && parseFloat(ratePerPhoto) >= 0) 
+            ? parseFloat(ratePerPhoto) 
+            : ((pricePerPhoto !== undefined && parseFloat(pricePerPhoto) >= 0) ? parseFloat(pricePerPhoto) : 0.80);
+
+        const newClient = {
+            id: 'client_' + uuidv4().substring(0, 8),
+            username: cleanUsername,
+            password: String(password).trim(),
+            name: name ? String(name).trim() : cleanUsername,
+            phone: phone ? String(phone).trim() : '',
+            eventId: eventId || 'default',
+            eventName: evName,
+            pricePerPhoto: effectiveRate,
+            activeSessionToken: null,
+            status: status || 'active',
+            allowedTemplates: Array.isArray(allowedTemplates) ? allowedTemplates.map(String) : [],
+            lastLoginAt: null,
+            lastActiveAt: null,
+            createdAt: new Date().toISOString()
+        };
+
+        await safeSaveClientUser(newClient);
+        console.log(`[Admin] Created rental client: ${newClient.username} (${newClient.name})`);
+        res.json({ success: true, client: newClient });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Update Client
+app.put('/api/admin/clients/:id', async (req, res) => {
+    try {
+        const user = await safeGetClientUserById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, error: 'Client not found' });
+
+        const { name, password, phone, eventId, eventName: reqEventName, ratePerPhoto, pricePerPhoto, status, allowedTemplates } = req.body;
+        if (name) user.name = String(name).trim();
+        if (password && String(password).trim().length > 0) user.password = String(password).trim();
+        if (phone !== undefined) user.phone = String(phone).trim();
+        if (status) user.status = status;
+        if (reqEventName !== undefined) user.eventName = String(reqEventName).trim();
+        if (ratePerPhoto !== undefined) user.pricePerPhoto = parseFloat(ratePerPhoto) >= 0 ? parseFloat(ratePerPhoto) : 0.80;
+        else if (pricePerPhoto !== undefined) user.pricePerPhoto = parseFloat(pricePerPhoto) >= 0 ? parseFloat(pricePerPhoto) : 0.80;
+        if (allowedTemplates !== undefined && Array.isArray(allowedTemplates)) {
+            user.allowedTemplates = allowedTemplates.map(String);
+        }
+
+        if (eventId) {
+            user.eventId = eventId;
+            const evs = await safeGetEvents();
+            const foundEv = evs.find(e => e.id === eventId);
+            if (foundEv) user.eventName = foundEv.name;
+        }
+
+        await safeSaveClientUser(user);
+        res.json({ success: true, client: user });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Direct Assign Templates to Client
+app.put('/api/admin/clients/:id/templates', async (req, res) => {
+    try {
+        const user = await safeGetClientUserById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, error: 'Client not found' });
+
+        const { allowedTemplates } = req.body;
+        if (!Array.isArray(allowedTemplates)) {
+            return res.status(400).json({ success: false, error: 'allowedTemplates must be an array of template IDs' });
+        }
+
+        user.allowedTemplates = allowedTemplates.map(String);
+        await safeSaveClientUser(user);
+        console.log(`[Admin] Updated assigned templates for ${user.username}: [${user.allowedTemplates.join(', ')}]`);
+        res.json({ success: true, allowedTemplates: user.allowedTemplates, client: user });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Delete Client
+app.delete('/api/admin/clients/:id', async (req, res) => {
+    try {
+        await safeDeleteClientUser(req.params.id);
+        res.json({ success: true });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Force Logout / Kickout Device Session for Client
+app.post('/api/admin/clients/:id/kickout', async (req, res) => {
+    try {
+        const user = await safeGetClientUserById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, error: 'Client not found' });
+
+        user.activeSessionToken = null;
+        await safeSaveClientUser(user);
+        console.log(`[Admin] Force kicked out active session for client '${user.username}'`);
+        res.json({ success: true, message: `Active device session for '${user.username}' terminated.` });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Get Client Invoice & Stats
+app.get('/api/admin/clients/:id/invoice', async (req, res) => {
+    try {
+        const user = await safeGetClientUserById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, error: 'Client not found' });
+
+        const regList = await safeGetRegistrations();
+        const clientPhotos = regList.filter(r => r.clientId === user.id || r.clientUsername === user.username);
+        const rate = user.pricePerPhoto ?? 0.80;
+        const total = (clientPhotos.length * rate).toFixed(2);
+
+        res.json({
+            success: true,
+            client: user,
+            totalPhotos: clientPhotos.length,
+            pricePerPhoto: rate,
+            totalAmount: total,
+            invoiceDate: new Date().toISOString()
+        });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 app.delete('/api/admin/leads/:id', async (req, res) => {
@@ -1131,15 +1613,39 @@ app.get('/api/admin/events/:id/invoice', async (req, res) => {
     res.json({ event: ev, totalGenerations: count, costPerGeneration: rate, totalAmount: (count * rate).toFixed(2), invoiceDate: new Date().toISOString() });
 });
 
-// App Templates (INJECT EVENT BANNER IF ACTIVE!)
+// App Templates (INJECT EVENT BANNER IF ACTIVE & FILTER BY CLIENT USER IF ASSIGNED!)
 app.get('/api/templates', async (req, res) => {
     try {
         console.log("Fetching templates...");
+        // Check for Client User Auth via Bearer Token or Query param
+        let clientUser = null;
+        const authHeader = req.headers['authorization'];
+        let token = null;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            token = authHeader.substring(7).trim();
+        } else if (req.query.token) {
+            token = String(req.query.token).trim();
+        }
+
+        if (token) {
+            clientUser = await safeGetClientUserBySessionToken(token);
+        } else if (req.query.clientId) {
+            clientUser = await safeGetClientUserById(req.query.clientId);
+        }
+
         let temps = await safeGetTemplates();
         let evs = await safeGetEvents();
         let activeEvent = evs.find(e => checkEventStatus(e) === 'active'); 
         
-        const activeTemps = temps.filter(t => t.isActive !== false);
+        let activeTemps = temps.filter(t => t.isActive !== false);
+
+        // Filter templates if this client user has specific assigned templates
+        if (clientUser && Array.isArray(clientUser.allowedTemplates) && clientUser.allowedTemplates.length > 0) {
+            const allowedSet = new Set(clientUser.allowedTemplates.map(String));
+            activeTemps = activeTemps.filter(t => allowedSet.has(String(t.id)));
+            console.log(`[Templates] Filtered for client ${clientUser.username}: ${activeTemps.length} templates (out of ${temps.length})`);
+        }
+
         if (activeEvent && activeEvent.bannerUrl && activeEvent.bannerUrl.length > 5) {
             activeTemps.unshift({
                 id: 'EVENT_BANNER', 
@@ -1956,6 +2462,35 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
     }
 
     const { name, email, phone, gender, themeId, company, themeName } = req.body;
+
+    // Rental Client Authentication & Single-Device Enforcement
+    const authHeader = req.headers.authorization;
+    const clientToken = (authHeader && authHeader.startsWith('Bearer ')) 
+        ? authHeader.substring(7).trim() 
+        : (req.body && req.body.clientToken ? String(req.body.clientToken).trim() : null);
+
+    let clientUser = null;
+    if (clientToken) {
+        clientUser = await safeGetClientUserBySessionToken(clientToken);
+        if (!clientUser) {
+            console.warn(`[Register] Blocked generation attempt with invalid or expired session token: ${clientToken}`);
+            return res.status(401).json({ 
+                success: false, 
+                code: 'SESSION_INVALIDATED', 
+                message: 'Aapka account kisi dusre device par login ho chuka hai. Is device se logout kiya ja raha hai.' 
+            });
+        }
+        if (clientUser.status !== 'active') {
+            return res.status(403).json({ 
+                success: false, 
+                code: 'ACCOUNT_DISABLED', 
+                message: 'Yeh rental account disabled hai. Please Admin se contact karein.' 
+            });
+        }
+        clientUser.lastActiveAt = new Date().toISOString();
+        await safeSaveClientUser(clientUser);
+    }
+
     const regId = uuidv4();
     const token = uuidv4().substring(0, 10);
     const resultFilename = `result_${regId}.png`;
@@ -1965,7 +2500,9 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
     let activeEvent = { id: 'default', name: 'General Event' };
     try {
         const evs = await safeGetEvents();
-        if (evs && evs.length > 0) {
+        if (clientUser && clientUser.eventId && clientUser.eventId !== 'default') {
+            activeEvent = evs.find(e => e.id === clientUser.eventId) || { id: clientUser.eventId, name: clientUser.eventName || 'Client Event' };
+        } else if (evs && evs.length > 0) {
             activeEvent = evs.find(e => checkEventStatus(e) === 'active') || evs[0];
         }
     } catch(e) {
@@ -1980,7 +2517,7 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
             imageUrl: activeEvent.bannerUrl || '/uploads/templates/default.png', 
             circleX: activeEvent.bannerCircleX || 540, 
             circleY: activeEvent.bannerCircleY || 540, 
-            circleSize: activeEvent.bannerCircleSize || 500,
+            circleSize: activeEvent.bannerCircleSize || 500, 
             maskShape: activeEvent.bannerMaskShape || 'circle',
             isBanner: true,
             mode: 'backdrop'
@@ -1999,6 +2536,9 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
         token: token,
         eventId: activeEvent ? activeEvent.id : 'default', 
         eventName: activeEvent ? activeEvent.name : 'General Event',
+        clientId: clientUser ? clientUser.id : null,
+        clientUsername: clientUser ? clientUser.username : null,
+        clientName: clientUser ? clientUser.name : null,
         name: name || 'Anonymous', 
         email: email || 'N/A', 
         phone: phone || 'N/A', 

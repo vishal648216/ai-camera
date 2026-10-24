@@ -20,7 +20,10 @@
         backendUrl: detectBackendUrl(),
         currentRegId: null,
         currentShareUrl: null,
-        currentResultData: null
+        currentResultData: null,
+        clientToken: localStorage.getItem('persona_client_token') || null,
+        clientUser: null,
+        heartbeatTimer: null
     };
 
     // Detect Best Backend URL automatically
@@ -111,7 +114,24 @@
         qrContainer: document.getElementById('qr-container'),
         qrShareUrl: document.getElementById('qr-share-url'),
         btnCopyUrl: document.getElementById('btn-copy-url'),
-        btnCloseQr: document.getElementById('btn-close-qr')
+        btnCloseQr: document.getElementById('btn-close-qr'),
+
+        // Client Rental Authentication & Terminal
+        clientInfoPill: document.getElementById('client-info-pill'),
+        clientNameDisplay: document.getElementById('client-name-display'),
+        btnClientLogout: document.getElementById('btn-client-logout'),
+        clientLoginOverlay: document.getElementById('client-login-overlay'),
+        formClientLogin: document.getElementById('form-client-login'),
+        inputLoginUsername: document.getElementById('input-login-username'),
+        inputLoginPassword: document.getElementById('input-login-password'),
+        btnTogglePwd: document.getElementById('btn-toggle-pwd'),
+        pwdEyeIcon: document.getElementById('pwd-eye-icon'),
+        loginErrorAlert: document.getElementById('login-error-alert'),
+        loginErrorText: document.getElementById('login-error-text'),
+        btnSubmitLogin: document.getElementById('btn-submit-login'),
+        loginSpinner: document.getElementById('login-spinner'),
+        modalKickedOut: document.getElementById('modal-kicked-out'),
+        btnReloginHere: document.getElementById('btn-relogin-here')
     };
 
     // =========================================================================
@@ -119,7 +139,9 @@
     // =========================================================================
     function init() {
         setupEventListeners();
+        setupClientAuthListeners();
         checkBackendHealth();
+        checkClientAuth();
         loadTemplates();
     }
 
@@ -205,6 +227,223 @@
         elements.btnChangeTemplate.addEventListener('click', () => navigateToScreen('screen-themes'));
         elements.btnRetryGeneration.addEventListener('click', startGenerationProcess);
         elements.btnErrorChangeTemplate.addEventListener('click', () => navigateToScreen('screen-themes'));
+    }
+
+    // =========================================================================
+    // Client Rental Authentication & Single Device Enforcement
+    // =========================================================================
+    function setupClientAuthListeners() {
+        if (elements.formClientLogin) {
+            elements.formClientLogin.addEventListener('submit', handleClientLogin);
+        }
+
+        if (elements.btnTogglePwd && elements.inputLoginPassword) {
+            elements.btnTogglePwd.addEventListener('click', () => {
+                const isPwd = elements.inputLoginPassword.type === 'password';
+                elements.inputLoginPassword.type = isPwd ? 'text' : 'password';
+                if (elements.pwdEyeIcon) {
+                    elements.pwdEyeIcon.innerHTML = isPwd
+                        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>'
+                        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+                }
+            });
+        }
+
+        if (elements.btnClientLogout) {
+            elements.btnClientLogout.addEventListener('click', handleClientLogout);
+        }
+
+        if (elements.btnReloginHere) {
+            elements.btnReloginHere.addEventListener('click', () => {
+                if (elements.modalKickedOut) elements.modalKickedOut.classList.add('hidden');
+                showLoginOverlay();
+            });
+        }
+    }
+
+    async function checkClientAuth() {
+        const token = state.clientToken;
+        if (!token) {
+            showLoginOverlay();
+            return;
+        }
+
+        try {
+            const resp = await fetch(`${state.backendUrl}/api/auth/client-verify`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.ok && data.success && data.user) {
+                onClientAuthSuccess(token, data.user);
+            } else {
+                if (data.code === 'SESSION_INVALIDATED') {
+                    showKickedOutModal();
+                } else {
+                    showLoginOverlay();
+                }
+            }
+        } catch (e) {
+            // Local fallback if offline
+            const savedUser = localStorage.getItem('persona_client_user');
+            if (savedUser) {
+                try {
+                    const u = JSON.parse(savedUser);
+                    state.clientUser = u;
+                    updateClientPill(u);
+                    startClientHeartbeat();
+                } catch(e2) {
+                    showLoginOverlay();
+                }
+            } else {
+                showLoginOverlay();
+            }
+        }
+    }
+
+    async function handleClientLogin(e) {
+        if (e) e.preventDefault();
+        hideLoginError();
+
+        const username = elements.inputLoginUsername ? elements.inputLoginUsername.value.trim() : '';
+        const password = elements.inputLoginPassword ? elements.inputLoginPassword.value.trim() : '';
+
+        if (!username || !password) {
+            showLoginError('Please enter both username and password.');
+            return;
+        }
+
+        setLoginLoading(true);
+
+        try {
+            const deviceInfo = `${navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop'} • ${navigator.platform || 'Device'}`;
+            const resp = await fetch(`${state.backendUrl}/api/auth/client-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, deviceInfo })
+            });
+
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || !data.success) {
+                throw new Error(data.message || 'Login failed. Please check credentials.');
+            }
+
+            onClientAuthSuccess(data.token, data.user);
+        } catch (err) {
+            showLoginError(err.message || 'Login failed. Please check credentials.');
+        } finally {
+            setLoginLoading(false);
+        }
+    }
+
+    function onClientAuthSuccess(token, user) {
+        state.clientToken = token;
+        state.clientUser = user;
+        localStorage.setItem('persona_client_token', token);
+        localStorage.setItem('persona_client_user', JSON.stringify(user));
+
+        if (elements.clientLoginOverlay) elements.clientLoginOverlay.classList.add('hidden');
+        if (elements.modalKickedOut) elements.modalKickedOut.classList.add('hidden');
+
+        updateClientPill(user);
+        startClientHeartbeat();
+        // Load templates allowed for this specific client
+        loadTemplates(true);
+    }
+
+    function updateClientPill(user) {
+        if (!elements.clientInfoPill) return;
+        elements.clientInfoPill.classList.remove('hidden');
+        if (elements.clientNameDisplay) {
+            elements.clientNameDisplay.textContent = user.name || user.username || 'Booth';
+            elements.clientInfoPill.title = `Terminal: ${user.username} (${user.eventName || 'Default Event'})`;
+        }
+    }
+
+    function startClientHeartbeat() {
+        if (state.heartbeatTimer) clearInterval(state.heartbeatTimer);
+        // Verify active device session every 15s
+        state.heartbeatTimer = setInterval(async () => {
+            if (!state.clientToken) return;
+            try {
+                const resp = await fetch(`${state.backendUrl}/api/auth/client-verify`, {
+                    headers: { 'Authorization': `Bearer ${state.clientToken}` }
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || !data.success) {
+                    if (data.code === 'SESSION_INVALIDATED') {
+                        stopClientHeartbeat();
+                        showKickedOutModal();
+                    }
+                } else if (data.user) {
+                    state.clientUser = data.user;
+                    updateClientPill(data.user);
+                }
+            } catch(e) {
+                // Heartbeat network skip
+            }
+        }, 15000);
+    }
+
+    function stopClientHeartbeat() {
+        if (state.heartbeatTimer) {
+            clearInterval(state.heartbeatTimer);
+            state.heartbeatTimer = null;
+        }
+    }
+
+    async function handleClientLogout() {
+        if (!confirm('Are you sure you want to log out of this photobooth terminal?')) return;
+        stopClientHeartbeat();
+        const token = state.clientToken;
+        if (token) {
+            fetch(`${state.backendUrl}/api/auth/client-logout`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            }).catch(() => {});
+        }
+        state.clientToken = null;
+        state.clientUser = null;
+        localStorage.removeItem('persona_client_token');
+        localStorage.removeItem('persona_client_user');
+        if (elements.clientInfoPill) elements.clientInfoPill.classList.add('hidden');
+        showLoginOverlay();
+        loadTemplates(true);
+    }
+
+    function showKickedOutModal() {
+        state.clientToken = null;
+        state.clientUser = null;
+        localStorage.removeItem('persona_client_token');
+        stopCameraStream();
+        if (elements.clientInfoPill) elements.clientInfoPill.classList.add('hidden');
+        if (elements.clientLoginOverlay) elements.clientLoginOverlay.classList.add('hidden');
+        if (elements.modalKickedOut) elements.modalKickedOut.classList.remove('hidden');
+    }
+
+    function showLoginOverlay() {
+        if (elements.modalKickedOut) elements.modalKickedOut.classList.add('hidden');
+        if (elements.clientLoginOverlay) elements.clientLoginOverlay.classList.remove('hidden');
+        if (elements.inputLoginUsername) elements.inputLoginUsername.focus();
+    }
+
+    function showLoginError(msg) {
+        if (elements.loginErrorAlert && elements.loginErrorText) {
+            elements.loginErrorText.textContent = msg;
+            elements.loginErrorAlert.classList.remove('hidden');
+        } else {
+            alert(msg);
+        }
+    }
+
+    function hideLoginError() {
+        if (elements.loginErrorAlert) elements.loginErrorAlert.classList.add('hidden');
+    }
+
+    function setLoginLoading(isLoading) {
+        if (elements.btnSubmitLogin) elements.btnSubmitLogin.disabled = isLoading;
+        if (elements.loginSpinner) elements.loginSpinner.classList.toggle('hidden', !isLoading);
+        const btnText = elements.btnSubmitLogin ? elements.btnSubmitLogin.querySelector('.btn-text') : null;
+        if (btnText) btnText.textContent = isLoading ? 'AUTHENTICATING...' : '⚡ ACTIVATE & START BOOTH';
     }
 
     // =========================================================================
@@ -459,7 +698,12 @@
         `;
 
         try {
-            const resp = await fetch(`${state.backendUrl}/api/templates?t=${Date.now()}`);
+            const headers = {};
+            if (state.clientToken) {
+                headers['Authorization'] = `Bearer ${state.clientToken}`;
+            }
+            const tokenQuery = state.clientToken ? `&token=${encodeURIComponent(state.clientToken)}` : '';
+            const resp = await fetch(`${state.backendUrl}/api/templates?t=${Date.now()}${tokenQuery}`, { headers });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
 
@@ -588,6 +832,12 @@
     // AI Photo Booth Generation Engine
     // =========================================================================
     async function startGenerationProcess() {
+        if (!state.clientToken) {
+            alert('Please login to this rental booth terminal first.');
+            showLoginOverlay();
+            return;
+        }
+
         if (!state.capturedBlob) {
             alert('Please take or upload your selfie first!');
             navigateToScreen('screen-selfie');
@@ -640,6 +890,9 @@
 
             const resp = await fetch(`${state.backendUrl}/api/register`, {
                 method: 'POST',
+                headers: {
+                    ...(state.clientToken ? { 'Authorization': `Bearer ${state.clientToken}` } : {})
+                },
                 body: formData,
                 signal: controller.signal
             });
@@ -649,6 +902,10 @@
 
             if (!resp.ok) {
                 const errData = await resp.json().catch(() => ({}));
+                if (resp.status === 401 && (errData.code === 'SESSION_INVALIDATED' || errData.code === 'AUTH_REQUIRED')) {
+                    showKickedOutModal();
+                    return;
+                }
                 throw new Error(errData.message || `Processing failed (${resp.status})`);
             }
 
