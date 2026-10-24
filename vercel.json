@@ -7,6 +7,12 @@
     "GEMINI_API_KEY": "AIzaSyADEyKUsr1yoEUJhxsAGNXE4WU0p-cAypk",
     "MAGIC_HOUR_API_KEY": "cm1234567890magichourkey"
   },
+  "functions": {
+    "index.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
   "builds": [
     {
       "src": "index.js",

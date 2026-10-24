@@ -2154,17 +2154,17 @@ async function performBackgroundRemoval(inputPath) {
         }
     }
 
-    // PRIORITY 2: Cloud AI Background Removal via HuggingFace Gradio (Multiple ultra-reliable spaces)
+    // PRIORITY 2: Cloud AI Background Removal via HuggingFace Gradio
     if (!cutoutBuffer) {
         try {
             const { Client } = require('@gradio/client');
             
-            // Resize selfies down to max 1024px for fast cloud transmission & inference
+            // Resize selfies down to max 800px for fast cloud transmission & inference
             let sendBuf = fs.readFileSync(inputPath);
             try {
                 sendBuf = await sharp(sendBuf)
-                    .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-                    .png({ quality: 90 })
+                    .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+                    .png({ quality: 85 })
                     .toBuffer();
             } catch(reErr) {}
 
@@ -2172,70 +2172,48 @@ async function performBackgroundRemoval(inputPath) {
             const hfToken = process.env.HF_TOKEN || process.env.HUGGINGFACE_TOKEN || process.env.HUGGING_FACE_HUB_TOKEN;
             const clientOptions = hfToken ? { hf_token: hfToken, token: hfToken } : {};
 
-            // List of top AI Background Removal spaces in fallback order:
-            // 1) BRIA-RMBG-1.4 (Official CPU space - fast 2-3s inference, no ZeroGPU quota needed!)
-            // 2) not-lain/background-removal (Fast RMBG mirror)
-            // 3) BRIA-RMBG-2.0 (High-res fallback space)
-            const aiProviders = [
-                { space: 'briaai/BRIA-RMBG-1.4', endpoint: '/run', payload: { image: blob } },
-                { space: 'not-lain/background-removal', endpoint: '/png', payload: { f: blob } },
-                { space: 'briaai/BRIA-RMBG-2.0', endpoint: '/image', payload: { image: blob } }
-            ];
-
-            for (const provider of aiProviders) {
-                try {
-                    console.log(`[BackgroundRemoval] Trying HuggingFace AI space: ${provider.space}...`);
-                    const gradioCall = (async () => {
-                        const client = await Client.connect(provider.space, clientOptions);
-                        return await client.predict(provider.endpoint, provider.payload);
-                    })();
-                    
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error(`Timeout after 10s on ${provider.space}`)), 10000)
-                    );
-                    
-                    const result = await Promise.race([gradioCall, timeoutPromise]);
-                    
-                    let imageUrl = null;
-                    if (Array.isArray(result?.data)) {
-                        if (result.data[1]?.url) {
-                            imageUrl = result.data[1].url;
-                        } else if (result.data[0]?.url) {
-                            imageUrl = result.data[0].url;
-                        } else if (Array.isArray(result.data[0]) && result.data[0][1]?.url) {
-                            imageUrl = result.data[0][1].url;
-                        } else if (Array.isArray(result.data[0]) && result.data[0][0]?.url) {
-                            imageUrl = result.data[0][0].url;
-                        }
-                    } else if (result?.data?.url) {
-                        imageUrl = result.data.url;
-                    }
-                    
-                    if (imageUrl) {
-                        const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
-                        cutoutBuffer = await sharp(Buffer.from(imgResp.data))
-                            .ensureAlpha()
-                            .png({ quality: 100 })
-                            .toBuffer();
-                        console.log(`[BackgroundRemoval] ${provider.space} SUCCESS (${cutoutBuffer.length} bytes)!`);
-                        break; // Successfully got clean transparent cutout!
-                    }
-                } catch(spaceErr) {
-                    console.warn(`[BackgroundRemoval] Notice from ${provider.space}: ${spaceErr.message}`);
-                }
+            // Strict 4-second timeout so serverless requests never hit Vercel 10s gateway timeout!
+            const cloudTimeout = isVercel ? 4000 : 7000;
+            console.log(`[BackgroundRemoval] Trying fast cloud space briaai/BRIA-RMBG-1.4 (timeout: ${cloudTimeout}ms)...`);
+            
+            const gradioCall = (async () => {
+                const client = await Client.connect('briaai/BRIA-RMBG-1.4', clientOptions);
+                return await client.predict('/run', { image: blob });
+            })();
+            
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error(`Timeout after ${cloudTimeout}ms`)), cloudTimeout)
+            );
+            
+            const result = await Promise.race([gradioCall, timeoutPromise]);
+            
+            let imageUrl = null;
+            if (Array.isArray(result?.data)) {
+                if (result.data[1]?.url) imageUrl = result.data[1].url;
+                else if (result.data[0]?.url) imageUrl = result.data[0].url;
+            } else if (result?.data?.url) {
+                imageUrl = result.data.url;
             }
-        } catch(gradioErr) {
-            console.warn(`[BackgroundRemoval] HuggingFace Gradio outer notice: ${gradioErr.message}`);
+            
+            if (imageUrl) {
+                const imgResp = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 5000 });
+                cutoutBuffer = await sharp(Buffer.from(imgResp.data))
+                    .ensureAlpha()
+                    .png({ quality: 100 })
+                    .toBuffer();
+                console.log(`[BackgroundRemoval] Cloud AI SUCCESS (${cutoutBuffer.length} bytes)!`);
+            }
+        } catch(spaceErr) {
+            console.warn(`[BackgroundRemoval] Cloud AI notice: ${spaceErr.message}`);
         }
     }
 
-    // PRIORITY 3: @imgly/background-removal-node (Guaranteed In-Memory Neural Fallback)
-    if (!cutoutBuffer) {
+    // PRIORITY 3: @imgly/background-removal-node (Local only — skip on Vercel to avoid heavy 40MB ONNX download)
+    if (!cutoutBuffer && !isVercel) {
         try {
             console.log("[BackgroundRemoval] Trying in-memory @imgly neural fallback (model: small)...");
             const { removeBackground } = require('@imgly/background-removal-node');
             
-            // Resize to max 640px for ultra-fast, low-memory ONNX inference
             let imglyInputBuf = fs.readFileSync(inputPath);
             try {
                 imglyInputBuf = await sharp(imglyInputBuf)
