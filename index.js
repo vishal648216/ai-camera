@@ -93,16 +93,32 @@ app.use('/uploads', async (req, res) => {
             }
         }
         if (req.path.includes('/templates/')) {
-            const temps = await safeGetTemplates(true);
             const filename = path.basename(req.path);
-            const templateId = filename.replace(/\.png$/, '');
-            const t = temps.find(x => x.id === templateId || (x.imageUrl && x.imageUrl.includes(filename)));
+            const templateId = filename.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+
+            let t = null;
+            if (mongoose.connection.readyState === 1) {
+                t = await Template.findOne({
+                    $or: [
+                        { id: templateId },
+                        { imageUrl: { $regex: filename, $options: 'i' } }
+                    ]
+                }).lean();
+            }
+
+            if (!t) {
+                const temps = await safeGetTemplates(true, true);
+                t = temps.find(x => x.id === templateId || (x.imageUrl && x.imageUrl.includes(filename)));
+            }
+
             if (t) {
                 const uri = t.imageData || t.imageUrl || t.master_image;
                 if (uri && uri.startsWith('data:image')) {
-                    const base64Str = uri.split(',')[1];
-                    const imgBuf = Buffer.from(base64Str, 'base64');
-                    res.setHeader('Content-Type', 'image/png');
+                    const parts = uri.split(',');
+                    const mimeMatch = parts[0].match(/:(.*?);/);
+                    const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+                    const imgBuf = Buffer.from(parts[1], 'base64');
+                    res.setHeader('Content-Type', mime);
                     res.setHeader('Cache-Control', 'public, max-age=86400');
                     return res.send(imgBuf);
                 }
