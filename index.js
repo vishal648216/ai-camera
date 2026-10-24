@@ -1725,10 +1725,11 @@ app.get('/api/templates', async (req, res) => {
         if (token) {
             clientUser = await safeGetClientUserBySessionToken(token);
         }
-        if (!clientUser && req.query.clientId) {
-            clientUser = await safeGetClientUserById(req.query.clientId);
+        if (!clientUser && (req.query.clientId || req.query.client)) {
+            const queryTarget = req.query.clientId || req.query.client;
+            clientUser = await safeGetClientUserById(queryTarget);
             if (!clientUser) {
-                clientUser = await safeGetClientUserByUsername(req.query.clientId);
+                clientUser = await safeGetClientUserByUsername(queryTarget);
             }
         }
         if (!clientUser && req.query.username) {
