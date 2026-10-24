@@ -348,7 +348,7 @@
             <div><h1>Theme Builder</h1><p class="text-secondary">Upload templates & calibrate human placement zone visually.</p></div>
             <div class="d-flex gap-2">
                 <button class="btn btn-outline-danger px-4 fw-bold" onclick="deleteAllTemplates()"><i class="fas fa-trash-alt me-2"></i>Clear All Templates</button>
-                <button class="btn btn-info px-4 fw-bold" data-bs-toggle="modal" data-bs-target="#uploadModal"><i class="fas fa-plus me-2"></i>Upload Template</button>
+                <button class="btn btn-info px-4 fw-bold" onclick="openUploadModal()"><i class="fas fa-plus me-2"></i>Upload Template</button>
             </div>
         </div>
         <div id="templateGrid" class="row g-4"><div class="col-12 text-center text-secondary py-4">Loading templates...</div></div>
@@ -590,6 +590,13 @@
                                     <option value="backdrop">Full-Body Backdrop Composite</option>
                                     <option value="face_swap">Character Face Swap</option>
                                 </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="small mb-1 fw-bold text-info"><i class="fas fa-user-lock me-1"></i>Assign To Client / User</label>
+                                <select id="tmplAssignedClient" class="form-select bg-dark border-secondary text-white">
+                                    <option value="all">🌐 All Clients (Public Template)</option>
+                                </select>
+                                <small class="text-secondary" style="font-size:11px;">Select karein agar ye template sirf kisi specific user (jaise mayur) ki profile me dikhana ho.</small>
                             </div>
                             <div class="mb-3"><label class="small mb-1">Template Image</label><input type="file" id="tmplFile" class="form-control bg-dark border-0 text-white" accept="image/*" onchange="handleTemplateFile(this)"></div>
                             <div class="alert alert-info p-2 small mt-3">
@@ -907,6 +914,44 @@
                 <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" id="btnSaveAssignedTemplates" class="btn btn-info btn-sm px-4 fw-bold" onclick="saveAssignedTemplates()">
                     <i class="fas fa-save me-1"></i>Save Template Assignment
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Single Template To Clients Modal -->
+<div class="modal fade" id="assignSingleTemplateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content glass-card p-0" style="background:#11112b; border:1px solid rgba(0,242,254,0.3);">
+            <div class="modal-header border-bottom border-secondary border-opacity-25 p-4">
+                <div>
+                    <h5 class="modal-title fw-bold text-white mb-1">
+                        <i class="fas fa-user-lock text-info me-2"></i>Assign Template to User Profile
+                    </h5>
+                    <small class="text-secondary" id="assignSingleTemplateTitle">Choose which user's account should show this template.</small>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <input type="hidden" id="assignSingleTemplateId">
+                <div class="text-center mb-3">
+                    <img id="assignSingleTemplateImg" src="" style="max-height:140px; border-radius:8px; border:1px solid rgba(0,242,254,0.3); object-fit:contain;" alt="Template">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-secondary">TARGET CLIENT / USER PROFILE</label>
+                    <select id="assignSingleClientSelect" class="form-select bg-dark text-white border-secondary">
+                        <option value="all">🌐 All Clients (Public / Visible to All)</option>
+                    </select>
+                </div>
+                <div class="alert alert-info py-2 px-3 small border-0 bg-info bg-opacity-10 text-info mb-0">
+                    <i class="fas fa-info-circle me-1"></i> Agar aap kisi user (jaise <b>mayur</b>) ko select karenge, toh yeh template <b>sirf us user ke account</b> me hi show hoga.
+                </div>
+            </div>
+            <div class="modal-footer border-top border-secondary border-opacity-25 p-3 d-flex justify-content-between">
+                <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="btnSaveSingleTemplateAssign" class="btn btn-info btn-sm px-4 fw-bold" onclick="saveSingleTemplateAssignment()">
+                    <i class="fas fa-save me-1"></i>Save Assignment
                 </button>
             </div>
         </div>
@@ -1915,6 +1960,16 @@ async function fetchTemplates() {
 
             const displayImg = t.imageUrl || (t.imageData && t.imageData.startsWith('data:image') ? t.imageData : '/uploads/templates/default.png');
 
+            let clientLabel = '🌐 All Clients';
+            let isPrivate = false;
+            if (t.assignedClients && t.assignedClients.length > 0 && !t.assignedClients.includes('all')) {
+                isPrivate = true;
+                clientLabel = t.assignedClients.map(cId => {
+                    const found = (_allClients || []).find(c => c.id === cId || (c.username || '').toLowerCase() === String(cId).toLowerCase());
+                    return found ? (found.name || found.username) : cId;
+                }).join(', ');
+            }
+
             return `
         <div class="col-md-3" id="tmpl-card-${t.id}">
             <div class="glass-card p-0 overflow-hidden h-100">
@@ -1935,10 +1990,17 @@ async function fetchTemplates() {
                 <div class="p-3">
                     <b>${t.name}</b>
                     <br><small class="text-secondary opacity-75 d-block mb-2" style="font-size:11px">${t.desc||''}</small>
-                    <div class="d-flex align-items-center gap-2 mt-2">
+                    <div class="mb-2">
+                        ${isPrivate
+                            ? `<span class="badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 p-1" style="font-size:11px;" title="Visible only for: ${escapeHtml(clientLabel)}"><i class="fas fa-user-lock me-1"></i>User: ${escapeHtml(clientLabel)}</span>`
+                            : `<span class="badge bg-secondary bg-opacity-25 text-white-50 border border-secondary border-opacity-25 p-1" style="font-size:11px;"><i class="fas fa-globe me-1"></i>All Users (Public)</span>`
+                        }
+                    </div>
+                    <div class="d-flex align-items-center gap-1 mt-2">
                         <button onclick="toggleTemplate('${t.id}')" class="btn btn-sm ${t.isActive?'btn-success':'btn-outline-secondary'} flex-grow-1" id="toggle-${t.id}">
                             ${t.isActive?'✓ Active':'○ Hidden'}
                         </button>
+                        <button onclick="openAssignSingleTemplateModal('${t.id}')" class="btn btn-sm btn-outline-info" title="Assign to specific user profile"><i class="fas fa-user-tag"></i></button>
                         <button onclick="editTemplateById('${t.id}')" class="btn btn-sm btn-outline-warning"><i class="fas fa-edit"></i></button>
                         <button onclick="deleteTemplate('${t.id}')" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
                     </div>
@@ -1954,6 +2016,30 @@ async function fetchTemplates() {
 let currentEditTemplateId = null;
 let _allTemplates = [];
 
+function populateTemplateAssignedClientDropdown(selectedVal = 'all') {
+    const sel = document.getElementById('tmplAssignedClient');
+    if (!sel) return;
+    let html = '<option value="all">🌐 All Clients (Public Template)</option>';
+    (_allClients || []).forEach(c => {
+        html += `<option value="${c.id}">👤 ${escapeHtml(c.name || c.username)} (@${escapeHtml(c.username)})</option>`;
+    });
+    sel.innerHTML = html;
+    sel.value = selectedVal || 'all';
+}
+
+async function openUploadModal() {
+    currentEditTemplateId = null;
+    if (!_allClients || _allClients.length === 0) {
+        await fetchClients();
+    }
+    populateTemplateAssignedClientDropdown('all');
+    document.getElementById('templateForm').reset();
+    document.getElementById('uploadModalTitle').innerText = 'Upload Template & Calibrate Person Zone';
+    document.getElementById('tmpl-preview-container').classList.add('d-none');
+    document.getElementById('tmpl-canvas-hint').style.display = '';
+    new bootstrap.Modal(document.getElementById('uploadModal')).show();
+}
+
 async function editTemplateById(id) {
     try {
         const res = await fetch(`${API}/api/admin/templates`);
@@ -1965,6 +2051,11 @@ async function editTemplateById(id) {
     document.getElementById('uploadModalTitle').innerText = 'Update Template: ' + (t.name || '');
     document.getElementById('tmplName').value = t.name || '';
     document.getElementById('tmplMode').value = t.mode || 'backdrop';
+    
+    if (!_allClients || _allClients.length === 0) {
+        await fetchClients();
+    }
+    populateTemplateAssignedClientDropdown(t.assignedClients?.[0] || 'all');
     
     const displayImg = t.imageUrl || (t.imageData && t.imageData.startsWith('data:image') ? t.imageData : '/uploads/templates/default.png');
     if (displayImg) {
@@ -1998,6 +2089,65 @@ async function editTemplateById(id) {
     }
     new bootstrap.Modal(document.getElementById('uploadModal')).show();
 }
+
+// Quick Assign Single Template To Clients Modal Logic
+async function openAssignSingleTemplateModal(templateId) {
+    const t = (_allTemplates || []).find(x => x.id === templateId);
+    if (!t) return;
+
+    if (!_allClients || _allClients.length === 0) {
+        await fetchClients();
+    }
+
+    document.getElementById('assignSingleTemplateId').value = t.id;
+    document.getElementById('assignSingleTemplateTitle').innerText = `Template: "${t.name}"`;
+    const displayImg = t.imageUrl || (t.imageData && t.imageData.startsWith('data:image') ? t.imageData : '/uploads/templates/default.png');
+    document.getElementById('assignSingleTemplateImg').src = displayImg;
+
+    const sel = document.getElementById('assignSingleClientSelect');
+    let html = '<option value="all">🌐 All Clients (Public / Visible to All)</option>';
+    (_allClients || []).forEach(c => {
+        html += `<option value="${c.id}">👤 ${escapeHtml(c.name || c.username)} (@${escapeHtml(c.username)})</option>`;
+    });
+    sel.innerHTML = html;
+
+    const cur = t.assignedClients?.[0] || 'all';
+    sel.value = cur;
+
+    new bootstrap.Modal(document.getElementById('assignSingleTemplateModal')).show();
+}
+
+async function saveSingleTemplateAssignment() {
+    const templateId = document.getElementById('assignSingleTemplateId').value;
+    const clientVal = document.getElementById('assignSingleClientSelect').value;
+    const btn = document.getElementById('btnSaveSingleTemplateAssign');
+    if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+
+    try {
+        const assignedClients = (clientVal === 'all') ? [] : [clientVal];
+        const res = await fetch(`${API}/api/admin/templates/${templateId}/assign-clients`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assignedClients })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Failed to save assignment');
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('assignSingleTemplateModal')).hide();
+        await fetchTemplates();
+        await fetchClients();
+        alert('Template client assignment updated successfully!');
+    } catch(e) {
+        alert('Error: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerText = 'Save Assignment'; }
+    }
+}
+window.openUploadModal = openUploadModal;
+window.openAssignSingleTemplateModal = openAssignSingleTemplateModal;
+window.saveSingleTemplateAssignment = saveSingleTemplateAssignment;
 
 async function toggleTemplate(id) {
     const btn = document.getElementById(`toggle-${id}`);
@@ -2055,6 +2205,8 @@ document.getElementById('templateForm').onsubmit = async (e) => {
     const fd = new FormData();
     fd.append('name', document.getElementById('tmplName').value);
     fd.append('mode', document.getElementById('tmplMode').value);
+    const assignedClient = document.getElementById('tmplAssignedClient') ? document.getElementById('tmplAssignedClient').value : 'all';
+    fd.append('assignedClients', assignedClient);
     if (file) fd.append('template', file);
     fd.append('maskShape', 'circle');
     fd.append('imgW', naturalW);
@@ -2077,6 +2229,7 @@ document.getElementById('templateForm').onsubmit = async (e) => {
         const modalInst = bootstrap.Modal.getOrCreateInstance(modalEl);
         modalInst.hide();
         await fetchTemplates();
+        await fetchClients();
     } catch(err) { 
         alert('Error saving template: ' + err.message); 
     } finally { 

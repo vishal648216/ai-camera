@@ -398,7 +398,8 @@ function loadConfigTemplates() {
                         circleSize: t.circleSize || 700,
                         imgW: t.imgW || 1080,
                         imgH: t.imgH || 1350,
-                        isActive: t.isActive !== false
+                        isActive: t.isActive !== false,
+                        assignedClients: Array.isArray(t.assignedClients) ? t.assignedClients : []
                     };
                 });
             }
@@ -411,14 +412,17 @@ function loadConfigTemplates() {
 
 async function safeGetTemplates(all = true, includeBase64 = false) {
     const cfgTemps = loadConfigTemplates();
-    let list = [...cfgTemps];
+    const tempMap = new Map();
+    for (const t of cfgTemps) {
+        if (t && t.id) tempMap.set(t.id, t);
+    }
 
     if (dbStore.templates && Array.isArray(dbStore.templates)) {
         for (const rawT of dbStore.templates) {
             const tid = rawT.id || (rawT._id ? rawT._id.toString() : '');
-            const t = { ...rawT, id: tid };
-            if (tid && !list.some(x => x.id === tid)) {
-                list.push(t);
+            if (tid) {
+                const existing = tempMap.get(tid) || {};
+                tempMap.set(tid, { ...existing, ...rawT, id: tid });
             }
         }
     }
@@ -433,15 +437,20 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
             if (temps && temps.length > 0) {
                 for (const rawT of temps) {
                     const tid = rawT.id || (rawT._id ? rawT._id.toString() : '');
-                    const t = { ...rawT, id: tid };
-                    if (tid && !list.some(x => x.id === tid)) {
-                        list.push(t);
+                    if (tid) {
+                        const existing = tempMap.get(tid) || {};
+                        tempMap.set(tid, { ...existing, ...rawT, id: tid });
                     }
                 }
             }
         }
     } catch (e) {
         // Fallback to local/cached templates immediately
+    }
+
+    let list = Array.from(tempMap.values());
+    if (!all) {
+        list = list.filter(t => t.isActive !== false);
     }
 
     const mapped = list.map(t => {
@@ -1629,8 +1638,15 @@ app.get('/api/templates', async (req, res) => {
 
         if (token) {
             clientUser = await safeGetClientUserBySessionToken(token);
-        } else if (req.query.clientId) {
+        }
+        if (!clientUser && req.query.clientId) {
             clientUser = await safeGetClientUserById(req.query.clientId);
+            if (!clientUser) {
+                clientUser = await safeGetClientUserByUsername(req.query.clientId);
+            }
+        }
+        if (!clientUser && req.query.username) {
+            clientUser = await safeGetClientUserByUsername(req.query.username);
         }
 
         let temps = await safeGetTemplates();
@@ -1639,11 +1655,32 @@ app.get('/api/templates', async (req, res) => {
         
         let activeTemps = temps.filter(t => t.isActive !== false);
 
-        // Filter templates if this client user has specific assigned templates
-        if (clientUser && Array.isArray(clientUser.allowedTemplates) && clientUser.allowedTemplates.length > 0) {
-            const allowedSet = new Set(clientUser.allowedTemplates.map(String));
-            activeTemps = activeTemps.filter(t => allowedSet.has(String(t.id)));
+        // Filter templates based on client user and template assignments
+        if (clientUser) {
+            const clientId = String(clientUser.id);
+            const clientUsername = String(clientUser.username || '').toLowerCase();
+
+            activeTemps = activeTemps.filter(t => {
+                // 1. If this template is explicitly assigned to specific client(s):
+                if (Array.isArray(t.assignedClients) && t.assignedClients.length > 0 && !t.assignedClients.includes('all')) {
+                    const isForThisClient = t.assignedClients.some(c => String(c) === clientId || String(c).toLowerCase() === clientUsername);
+                    return isForThisClient;
+                }
+
+                // 2. If template is public, but client has allowedTemplates whitelist configured:
+                if (Array.isArray(clientUser.allowedTemplates) && clientUser.allowedTemplates.length > 0) {
+                    return clientUser.allowedTemplates.includes(String(t.id));
+                }
+
+                // 3. Otherwise, public template is visible to this client
+                return true;
+            });
             console.log(`[Templates] Filtered for client ${clientUser.username}: ${activeTemps.length} templates (out of ${temps.length})`);
+        } else {
+            // Unauthenticated / guest terminal: ONLY show public templates (not private/assigned to specific clients)
+            activeTemps = activeTemps.filter(t => {
+                return !Array.isArray(t.assignedClients) || t.assignedClients.length === 0 || t.assignedClients.includes('all');
+            });
         }
 
         if (activeEvent && activeEvent.bannerUrl && activeEvent.bannerUrl.length > 5) {
@@ -1742,11 +1779,32 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
         const circleY = (!isNaN(parseInt(req.body.circleY)) && isFinite(parseInt(req.body.circleY))) ? parseInt(req.body.circleY) : (t.circleY || Math.round(imgH * 0.75));
         const circleSize = (!isNaN(parseInt(req.body.circleSize)) && isFinite(parseInt(req.body.circleSize))) ? parseInt(req.body.circleSize) : (t.circleSize || Math.round(imgH * 0.35));
 
+        let assignedClients = t.assignedClients || [];
+        if (req.body.assignedClients !== undefined) {
+            if (Array.isArray(req.body.assignedClients)) {
+                assignedClients = req.body.assignedClients.map(String).filter(Boolean);
+            } else if (typeof req.body.assignedClients === 'string') {
+                const val = req.body.assignedClients.trim();
+                if (val === 'all' || val === '') {
+                    assignedClients = [];
+                } else {
+                    try {
+                        const parsed = JSON.parse(val);
+                        if (Array.isArray(parsed)) assignedClients = parsed.map(String).filter(Boolean);
+                        else assignedClients = [val];
+                    } catch(e) {
+                        assignedClients = val.split(',').map(s => s.trim()).filter(Boolean);
+                    }
+                }
+            }
+        }
+
         t = {
             ...t,
             name: req.body.name || t.name,
             mode: req.body.mode || t.mode,
             desc: req.body.desc || t.desc,
+            assignedClients: assignedClients,
             imageUrl: relUrl,
             imageData: base64Data,
             imgW: imgW,
@@ -1759,6 +1817,21 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
         };
 
         await safeSaveTemplate(t);
+
+        // Sync with ClientUser
+        if (assignedClients.length > 0) {
+            const allClients = await safeGetClientUsers();
+            for (const cl of allClients) {
+                const isAssigned = assignedClients.some(c => c === cl.id || c.toLowerCase() === (cl.username || '').toLowerCase());
+                let clAllowed = Array.isArray(cl.allowedTemplates) ? [...cl.allowedTemplates] : [];
+                if (isAssigned && !clAllowed.includes(t.id)) {
+                    clAllowed.push(t.id);
+                    cl.allowedTemplates = clAllowed;
+                    await safeSaveClientUser(cl);
+                }
+            }
+        }
+
         const { imageData, ...lightweightT } = t;
         res.json({ ...lightweightT, imageUrl: relUrl });
     } catch(e) {
@@ -1773,6 +1846,45 @@ app.delete('/api/admin/templates-all', async (req, res) => {
 app.delete('/api/admin/templates/:id', async (req, res) => {
     await safeDeleteTemplate(req.params.id);
     res.json({ success: true });
+});
+app.put('/api/admin/templates/:id/assign-clients', async (req, res) => {
+    try {
+        const temps = await safeGetTemplates(true, true);
+        const t = temps.find(x => x.id === req.params.id);
+        if (!t) return res.status(404).json({ success: false, error: "Template not found" });
+
+        let { assignedClients } = req.body;
+        if (!Array.isArray(assignedClients)) {
+            assignedClients = (assignedClients && assignedClients !== 'all') ? [String(assignedClients)] : [];
+        }
+        assignedClients = assignedClients.map(String).filter(c => c && c !== 'all');
+        t.assignedClients = assignedClients;
+        await safeSaveTemplate(t);
+
+        // Sync with ClientUser
+        const allClients = await safeGetClientUsers();
+        for (const cl of allClients) {
+            const isAssigned = assignedClients.some(c => c === cl.id || c.toLowerCase() === (cl.username || '').toLowerCase());
+            let clAllowed = Array.isArray(cl.allowedTemplates) ? [...cl.allowedTemplates] : [];
+            if (isAssigned) {
+                if (!clAllowed.includes(t.id)) {
+                    clAllowed.push(t.id);
+                    cl.allowedTemplates = clAllowed;
+                    await safeSaveClientUser(cl);
+                }
+            } else if (assignedClients.length > 0) {
+                if (clAllowed.includes(t.id)) {
+                    cl.allowedTemplates = clAllowed.filter(id => id !== t.id);
+                    await safeSaveClientUser(cl);
+                }
+            }
+        }
+
+        console.log(`[Admin] Template ${t.name} (${t.id}) client assignment updated: [${assignedClients.join(', ')}]`);
+        res.json({ success: true, templateId: t.id, assignedClients: t.assignedClients });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 app.post('/api/admin/templates', upload.single('template'), async (req, res) => {
     try {
@@ -1812,11 +1924,32 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
         const circleY = (!isNaN(parseInt(req.body.circleY)) && isFinite(parseInt(req.body.circleY))) ? parseInt(req.body.circleY) : Math.round(imgH * 0.75);
         const circleSize = (!isNaN(parseInt(req.body.circleSize)) && isFinite(parseInt(req.body.circleSize))) ? parseInt(req.body.circleSize) : Math.round(imgH * 0.35);
 
+        let assignedClients = [];
+        if (req.body.assignedClients !== undefined) {
+            if (Array.isArray(req.body.assignedClients)) {
+                assignedClients = req.body.assignedClients.map(String).filter(Boolean);
+            } else if (typeof req.body.assignedClients === 'string') {
+                const val = req.body.assignedClients.trim();
+                if (val === 'all' || val === '') {
+                    assignedClients = [];
+                } else {
+                    try {
+                        const parsed = JSON.parse(val);
+                        if (Array.isArray(parsed)) assignedClients = parsed.map(String).filter(Boolean);
+                        else assignedClients = [val];
+                    } catch(e) {
+                        assignedClients = val.split(',').map(s => s.trim()).filter(Boolean);
+                    }
+                }
+            }
+        }
+
         const t = {
             id: tId,
             name: req.body.name || 'Unnamed',
             mode: req.body.mode || 'backdrop',
             desc: req.body.desc || (req.body.mode === 'face_swap' ? 'Face Swap Costume Template' : 'Full-Body Event Backdrop Template'),
+            assignedClients: assignedClients,
             imageUrl: relUrl,
             imageData: base64Data,
             imgW: imgW,
@@ -1829,6 +1962,21 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
             createdAt: new Date().toISOString()
         };
         await safeSaveTemplate(t);
+
+        // Sync with ClientUser
+        if (assignedClients.length > 0) {
+            const allClients = await safeGetClientUsers();
+            for (const cl of allClients) {
+                const isAssigned = assignedClients.some(c => c === cl.id || c.toLowerCase() === (cl.username || '').toLowerCase());
+                let clAllowed = Array.isArray(cl.allowedTemplates) ? [...cl.allowedTemplates] : [];
+                if (isAssigned && !clAllowed.includes(t.id)) {
+                    clAllowed.push(t.id);
+                    cl.allowedTemplates = clAllowed;
+                    await safeSaveClientUser(cl);
+                }
+            }
+        }
+
         const { imageData, ...lightweightT } = t;
         res.json({ ...lightweightT, imageUrl: relUrl });
     } catch(e) {
