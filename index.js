@@ -436,7 +436,23 @@ function loadConfigTemplates() {
     return [];
 }
 
+let _cachedTemplates = null;
+let _cachedTemplatesTimestamp = 0;
+const TEMPLATE_CACHE_TTL = 30000; // 30 seconds
+
+function invalidateTemplateCache() {
+    _cachedTemplates = null;
+    _cachedTemplatesTimestamp = 0;
+}
+
 async function safeGetTemplates(all = true, includeBase64 = false) {
+    const now = Date.now();
+    if (!includeBase64 && _cachedTemplates && (now - _cachedTemplatesTimestamp < TEMPLATE_CACHE_TTL)) {
+        let list = _cachedTemplates;
+        if (!all) list = list.filter(t => t.isActive !== false);
+        return list;
+    }
+
     const cfgTemps = loadConfigTemplates();
     const tempMap = new Map();
     for (const t of cfgTemps) {
@@ -457,12 +473,16 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
         await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
             const filter = all ? {} : { isActive: { $ne: false } };
-            const projection = includeBase64 ? {} : { imageData: 0 };
+            // CRITICAL: Exclude all bloated Base64 fields so query takes 100ms instead of 42 seconds!
+            const projection = includeBase64 ? {} : { imageData: 0, master_image: 0, imageUrl: 0, rawImage: 0 };
             const temps = await Template.find(filter, projection).sort({ _id: -1 }).lean();
             if (temps && temps.length > 0) {
                 for (const rawT of temps) {
                     const tid = rawT.id || (rawT._id ? rawT._id.toString() : '');
                     if (tid) {
+                        if (rawT.imageUrl && rawT.imageUrl.startsWith('data:image')) {
+                            rawT.imageUrl = `/uploads/templates/${tid}.png`;
+                        }
                         const existing = tempMap.get(tid) || {};
                         tempMap.set(tid, { ...existing, ...rawT, id: tid });
                     }
@@ -491,28 +511,17 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
         };
         if (!includeBase64) {
             delete resObj.imageData;
+            delete resObj.master_image;
         } else if (!resObj.imageData && t.imageUrl && t.imageUrl.startsWith('data:image')) {
             resObj.imageData = t.imageUrl;
         }
         return resObj;
     });
 
-    // Pre-extract Base64 template images to disk so cold starts are instant!
-    try {
-        const uploadTemplatesDir = getUploadDir('templates');
-        for (const t of mapped) {
-            if (t && t.id && (t.imageData || t.imageUrl)) {
-                const diskPath = path.join(uploadTemplatesDir, `${t.id}.png`);
-                const uri = t.imageData || t.imageUrl;
-                if (uri && uri.startsWith('data:image') && !fs.existsSync(diskPath)) {
-                    try {
-                        fs.writeFileSync(diskPath, Buffer.from(uri.split(',')[1], 'base64'));
-                        console.log(`[PreExtract] Pre-cached template disk image for: ${t.name} (${t.id})`);
-                    } catch(err) {}
-                }
-            }
-        }
-    } catch(e) {}
+    if (!includeBase64 && all) {
+        _cachedTemplates = mapped;
+        _cachedTemplatesTimestamp = now;
+    }
 
     return mapped;
 }
@@ -605,6 +614,7 @@ function saveToTemplateConfig(tData) {
 
 function deleteFromTemplateConfig(id) {
     if (!id) return;
+    invalidateTemplateCache();
     try {
         const configPath = path.join(__dirname, 'template_config.json');
         if (fs.existsSync(configPath)) {
@@ -619,6 +629,7 @@ function deleteFromTemplateConfig(id) {
 }
 
 function clearTemplateConfig() {
+    invalidateTemplateCache();
     try {
         const configPath = path.join(__dirname, 'template_config.json');
         fs.writeFileSync(configPath, JSON.stringify({ templates: [] }, null, 2));
@@ -627,6 +638,7 @@ function clearTemplateConfig() {
 
 async function safeSaveTemplate(tData) {
     if (!tData || !tData.id) return;
+    invalidateTemplateCache();
     if (!dbStore.templates) dbStore.templates = [];
     const idx = dbStore.templates.findIndex(t => t.id === tData.id);
     if (idx >= 0) dbStore.templates[idx] = tData;
