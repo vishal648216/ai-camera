@@ -389,52 +389,49 @@ async function safeGetEvents() {
 
 function loadConfigTemplates() {
     try {
-        const configPath = path.join(__dirname, 'template_config.json');
-        if (fs.existsSync(configPath)) {
-            const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            if (cfg && cfg.templates && Array.isArray(cfg.templates) && cfg.templates.length > 0) {
-                const uploadTemplatesDir = getUploadDir('templates');
-                return cfg.templates.map(t => {
-                    const templateId = t.id || 'template_default';
-                    const diskFileName = `${templateId}.png`;
-                    const diskFilePath = path.join(uploadTemplatesDir, diskFileName);
-                    const relativeUrl = `/uploads/templates/${diskFileName}`;
+        const cfg = getTemplateConfigCache();
+        if (cfg && cfg.templates && Array.isArray(cfg.templates) && cfg.templates.length > 0) {
+            const uploadTemplatesDir = getUploadDir('templates');
+            return cfg.templates.map(t => {
+                const templateId = t.id || 'template_default';
+                const diskFileName = `${templateId}.png`;
+                const diskFilePath = path.join(uploadTemplatesDir, diskFileName);
+                const relativeUrl = `/uploads/templates/${diskFileName}`;
 
-                    const rawData = t.imageData || t.imageUrl || t.master_image;
-                    if (rawData && rawData.startsWith('data:image')) {
-                        if (!fs.existsSync(diskFilePath)) {
-                            try {
-                                const base64Str = rawData.split(',')[1];
-                                fs.writeFileSync(diskFilePath, Buffer.from(base64Str, 'base64'));
-                                console.log(`[Templates] Extracted config template Base64 to disk: ${diskFileName}`);
-                            } catch (e) {
-                                console.warn(`Notice writing template ${diskFileName}:`, e.message);
-                            }
-                        }
+                // Only write to disk if imageData exists AND file doesn't already exist
+                const rawData = t.imageData || (t.imageUrl && t.imageUrl.startsWith('data:image') ? t.imageUrl : null);
+                if (rawData && !fs.existsSync(diskFilePath)) {
+                    try {
+                        const base64Str = rawData.split(',')[1];
+                        fs.writeFileSync(diskFilePath, Buffer.from(base64Str, 'base64'));
+                        console.log(`[Templates] Extracted config template Base64 to disk: ${diskFileName}`);
+                    } catch (e) {
+                        console.warn(`Notice writing template ${diskFileName}:`, e.message);
                     }
+                }
 
-                    return {
-                        id: templateId,
-                        name: t.name || 'Event Template',
-                        mode: t.mode || 'backdrop',
-                        desc: t.desc || '',
-                        imageUrl: relativeUrl,
-                        circleX: t.circleX || 540,
-                        circleY: t.circleY || 450,
-                        circleSize: t.circleSize || 700,
-                        imgW: t.imgW || 1080,
-                        imgH: t.imgH || 1350,
-                        isActive: t.isActive !== false,
-                        assignedClients: Array.isArray(t.assignedClients) ? t.assignedClients : []
-                    };
-                });
-            }
+                return {
+                    id: templateId,
+                    name: t.name || 'Event Template',
+                    mode: t.mode || 'backdrop',
+                    desc: t.desc || '',
+                    imageUrl: relativeUrl,
+                    circleX: t.circleX || 540,
+                    circleY: t.circleY || 450,
+                    circleSize: t.circleSize || 700,
+                    imgW: t.imgW || 1080,
+                    imgH: t.imgH || 1350,
+                    isActive: t.isActive !== false,
+                    assignedClients: Array.isArray(t.assignedClients) ? t.assignedClients : []
+                };
+            });
         }
     } catch(e) {
         console.warn("Notice loading template_config.json:", e.message);
     }
     return [];
 }
+
 
 let _cachedTemplates = null;
 let _cachedTemplatesTimestamp = 0;
@@ -593,20 +590,88 @@ async function safeSaveEvent(evData) {
     } catch (e) {}
 }
 
+// In-memory cache of template_config to avoid reading 6MB from disk on every request
+let _templateConfigCache = null;
+let _templateConfigDirty = false;
+let _templateConfigWriteTimer = null;
+
+function getTemplateConfigCache() {
+    if (_templateConfigCache) return _templateConfigCache;
+    try {
+        const configPath = path.join(__dirname, 'template_config.json');
+        if (fs.existsSync(configPath)) {
+            const raw = fs.readFileSync(configPath, 'utf8');
+            const cfg = JSON.parse(raw);
+            // Strip Base64 from in-memory cache to keep it lean
+            if (cfg && cfg.templates) {
+                cfg.templates = cfg.templates.map(t => {
+                    const { imageData, master_image, rawImage, ...rest } = t;
+                    // Only keep imageUrl if it's not a data URI
+                    if (rest.imageUrl && rest.imageUrl.startsWith('data:image')) {
+                        rest.imageUrl = `/uploads/templates/${t.id}.png`;
+                    }
+                    return rest;
+                });
+            }
+            _templateConfigCache = cfg || { templates: [] };
+        } else {
+            _templateConfigCache = { templates: [] };
+        }
+    } catch(e) {
+        _templateConfigCache = { templates: [] };
+    }
+    return _templateConfigCache;
+}
+
+function flushTemplateConfigToDisk() {
+    // Clear pending write timer
+    if (_templateConfigWriteTimer) {
+        clearTimeout(_templateConfigWriteTimer);
+        _templateConfigWriteTimer = null;
+    }
+    if (!_templateConfigDirty || !_templateConfigCache) return;
+    try {
+        const configPath = path.join(__dirname, 'template_config.json');
+        // Always strip base64 before writing to disk — keeps file at 2KB instead of 6MB!
+        const stripped = {
+            templates: (_templateConfigCache.templates || []).map(t => {
+                const { imageData, master_image, rawImage, ...rest } = t;
+                if (rest.imageUrl && rest.imageUrl.startsWith('data:image')) {
+                    rest.imageUrl = `/uploads/templates/${t.id}.png`;
+                }
+                return rest;
+            })
+        };
+        fs.writeFileSync(configPath, JSON.stringify(stripped, null, 2));
+        _templateConfigDirty = false;
+        console.log(`[TemplateConfig] Flushed ${stripped.templates.length} templates to disk (lean, no Base64)`);
+    } catch(e) {
+        console.warn('Notice flushing template_config.json:', e.message);
+    }
+}
+
+function scheduleTemplateConfigFlush(urgent = false) {
+    _templateConfigDirty = true;
+    if (_templateConfigWriteTimer) clearTimeout(_templateConfigWriteTimer);
+    // urgent=true: write in 100ms (after save), normal: defer 2s (after delete/toggle)
+    _templateConfigWriteTimer = setTimeout(flushTemplateConfigToDisk, urgent ? 100 : 2000);
+}
+
 function saveToTemplateConfig(tData) {
     if (!tData || !tData.id) return;
     try {
-        const configPath = path.join(__dirname, 'template_config.json');
-        let cfg = { templates: [] };
-        if (fs.existsSync(configPath)) {
-            try { cfg = JSON.parse(fs.readFileSync(configPath, 'utf8')); } catch(e) {}
-        }
+        const cfg = getTemplateConfigCache();
         if (!cfg.templates || !Array.isArray(cfg.templates)) cfg.templates = [];
+        // Strip base64 before storing in memory cache
+        const { imageData, master_image, rawImage, ...cleanData } = tData;
+        if (cleanData.imageUrl && cleanData.imageUrl.startsWith('data:image')) {
+            cleanData.imageUrl = `/uploads/templates/${tData.id}.png`;
+        }
         const idx = cfg.templates.findIndex(t => t.id === tData.id);
-        if (idx >= 0) cfg.templates[idx] = tData;
-        else cfg.templates.unshift(tData);
-        fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
-        console.log(`[TemplateConfig] Persisted template '${tData.name}' (${tData.id}) to template_config.json`);
+        if (idx >= 0) cfg.templates[idx] = cleanData;
+        else cfg.templates.unshift(cleanData);
+        scheduleTemplateConfigFlush(true); // urgent: write soon
+        console.log(`[TemplateConfig] Queued template '${tData.name}' (${tData.id}) for disk flush`);
     } catch(e) {
         console.warn("Notice updating template_config.json:", e.message);
     }
@@ -616,14 +681,11 @@ function deleteFromTemplateConfig(id) {
     if (!id) return;
     invalidateTemplateCache();
     try {
-        const configPath = path.join(__dirname, 'template_config.json');
-        if (fs.existsSync(configPath)) {
-            let cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            if (cfg && cfg.templates && Array.isArray(cfg.templates)) {
-                cfg.templates = cfg.templates.filter(t => t.id !== id && t._id !== id);
-                fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
-                console.log(`[TemplateConfig] Deleted template ${id} from template_config.json`);
-            }
+        const cfg = getTemplateConfigCache();
+        if (cfg && cfg.templates && Array.isArray(cfg.templates)) {
+            cfg.templates = cfg.templates.filter(t => t.id !== id && t._id !== id);
+            scheduleTemplateConfigFlush(false); // defer: not urgent
+            console.log(`[TemplateConfig] Queued removal of template ${id}`);
         }
     } catch(e) {}
 }
@@ -631,8 +693,8 @@ function deleteFromTemplateConfig(id) {
 function clearTemplateConfig() {
     invalidateTemplateCache();
     try {
-        const configPath = path.join(__dirname, 'template_config.json');
-        fs.writeFileSync(configPath, JSON.stringify({ templates: [] }, null, 2));
+        _templateConfigCache = { templates: [] };
+        scheduleTemplateConfigFlush(true);
     } catch(e) {}
 }
 

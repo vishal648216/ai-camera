@@ -2467,9 +2467,32 @@ async function saveSingleTemplateAssignment() {
         }
 
         bootstrap.Modal.getInstance(document.getElementById('assignSingleTemplateModal')).hide();
-        await fetchTemplates();
-        await fetchClients();
-        alert('Template client assignment updated successfully!');
+
+        // INSTANT local card update — no full re-fetch of all templates!
+        const idx = (_allTemplates || []).findIndex(x => x.id === templateId);
+        if (idx >= 0) _allTemplates[idx].assignedClients = assignedClients;
+
+        // Update the badge on the template card directly
+        const card = document.getElementById(`tmpl-card-${templateId}`);
+        if (card) {
+            const badgeEl = card.querySelector('.badge.bg-info, .badge.bg-secondary');
+            if (badgeEl) {
+                const isPrivate = assignedClients.length > 0;
+                const clientName = isPrivate ? (() => {
+                    const found = (_allClients || []).find(c => c.id === clientVal || (c.username||'').toLowerCase() === clientVal.toLowerCase());
+                    return found ? (found.name || found.username) : clientVal;
+                })() : null;
+                badgeEl.className = isPrivate
+                    ? 'badge bg-info bg-opacity-25 text-info border border-info border-opacity-25 p-1'
+                    : 'badge bg-secondary bg-opacity-25 text-white-50 border border-secondary border-opacity-25 p-1';
+                badgeEl.style.fontSize = '11px';
+                badgeEl.innerHTML = isPrivate
+                    ? `<i class="fas fa-user-lock me-1"></i>User: ${escapeHtml(clientName)}`
+                    : `<i class="fas fa-globe me-1"></i>All Users (Public)`;
+            }
+        }
+        // Silent background re-fetch (no alert, no blocking)
+        setTimeout(() => fetchTemplates(), 1500);
     } catch(e) {
         alert('Error: ' + e.message);
     } finally {
@@ -2482,13 +2505,31 @@ window.saveSingleTemplateAssignment = saveSingleTemplateAssignment;
 
 async function toggleTemplate(id) {
     const btn = document.getElementById(`toggle-${id}`);
+    const card = document.getElementById(`tmpl-card-${id}`);
     if (btn) { btn.disabled = true; btn.innerText = 'Updating...'; }
     try {
         const res = await fetch(`${API}/api/admin/templates/${id}`, { method: 'PATCH' });
         const t = await res.json();
-        await fetchTemplates(); // Refresh grid
+        // INSTANT local update — no full page re-fetch needed!
+        const isNowActive = t.isActive !== false;
+        if (btn) {
+            btn.className = `btn btn-sm ${isNowActive ? 'btn-success' : 'btn-outline-secondary'} flex-grow-1`;
+            btn.innerText = isNowActive ? '✓ Active' : '○ Hidden';
+        }
+        // Update active/hidden badge in card
+        if (card) {
+            const badge = card.querySelector('.badge.position-absolute.top-0.start-0');
+            if (badge) {
+                badge.className = `badge position-absolute top-0 start-0 m-2 ${isNowActive ? 'bg-success' : 'bg-secondary'}`;
+                badge.innerText = isNowActive ? 'Active' : 'Hidden';
+            }
+        }
+        // Update the in-memory list too
+        const idx = (_allTemplates || []).findIndex(x => x.id === id);
+        if (idx >= 0) _allTemplates[idx].isActive = isNowActive;
     } catch(e) {
         alert('Error toggling template');
+        if (btn) { btn.className = 'btn btn-sm btn-outline-secondary flex-grow-1'; btn.innerText = '○ Hidden'; }
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -2496,18 +2537,29 @@ async function toggleTemplate(id) {
 async function deleteTemplate(id) {
     if (confirm('Are you sure you want to delete this template? This cannot be undone.')) {
         const card = document.getElementById(`tmpl-card-${id}`);
-        if (card) card.style.opacity = '0.3';
+        // Instant visual fade
+        if (card) { card.style.transition = 'opacity 0.3s, transform 0.3s'; card.style.opacity = '0.3'; card.style.transform = 'scale(0.95)'; }
         try {
             const res = await fetch(`${API}/api/admin/templates/${id}`, { method: 'DELETE' });
             if (res.ok) {
-                if (card) card.remove();
-                await fetchTemplates();
+                // INSTANT DOM remove — no re-fetch needed!
+                if (card) {
+                    card.style.opacity = '0';
+                    setTimeout(() => card.remove(), 300);
+                }
+                // Remove from in-memory list
+                _allTemplates = (_allTemplates || []).filter(t => t.id !== id);
+                // Show empty state if no templates left
+                const grid = document.getElementById('templateGrid');
+                if (grid && grid.children.length <= 1 && _allTemplates.length === 0) {
+                    setTimeout(() => { grid.innerHTML = '<div class="col-12 text-center text-secondary py-4">No templates found. Click "Upload Template" to add one.</div>'; }, 350);
+                }
             } else {
-                if (card) card.style.opacity = '1';
+                if (card) { card.style.opacity = '1'; card.style.transform = ''; }
                 alert('Failed to delete template from database: ' + res.statusText);
             }
         } catch(e) {
-            if (card) card.style.opacity = '1';
+            if (card) { card.style.opacity = '1'; card.style.transform = ''; }
             alert('Error deleting template: ' + e.message);
         }
     }
@@ -2517,8 +2569,9 @@ async function deleteAllTemplates() {
         try {
             const res = await fetch(`${API}/api/admin/templates-all`, { method: 'DELETE' });
             if (res.ok) {
+                // INSTANT clear — no re-fetch needed!
+                _allTemplates = [];
                 document.getElementById('templateGrid').innerHTML = '<div class="col-12 text-center text-secondary py-4">No templates found. Click "Upload Template" to add one.</div>';
-                await fetchTemplates();
             } else {
                 alert('Failed to clear all templates: ' + res.statusText);
             }
