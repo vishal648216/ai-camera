@@ -30,7 +30,7 @@ const getUploadDir = (subDir) => {
     if (!fs.existsSync(dirPath)) {
         try { fs.mkdirSync(dirPath, { recursive: true }); } catch (e) {
             dirPath = path.join(os.tmpdir(), 'uploads', subDir);
-            try { fs.mkdirSync(dirPath, { recursive: true }); } catch (err) {}
+            try { fs.mkdirSync(dirPath, { recursive: true }); } catch (err) { }
         }
     }
     return dirPath;
@@ -67,7 +67,7 @@ app.get('/api/results/:id', async (req, res) => {
             return res.json({ success: true, id: reg.id, resultData: reg.resultData, resultUrl: reg.resultUrl, personaDescription: reg.personaDescription });
         }
         res.status(404).json({ success: false, message: 'Result not found' });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, message: e.message });
     }
 });
@@ -124,7 +124,7 @@ app.use('/uploads', async (req, res) => {
                 }
             }
         }
-    } catch(e) {}
+    } catch (e) { }
 
     res.status(404).send('Not found');
 });
@@ -141,7 +141,7 @@ app.get(['/admin', '/admin.html'], (req, res) => {
 });
 
 const storage = multer.memoryStorage();
-const upload = multer({ 
+const upload = multer({
     storage,
     limits: { fileSize: 25 * 1024 * 1024 }
 });
@@ -149,11 +149,11 @@ const upload = multer({
 function ensureFileSaved(reqFile, subDir) {
     if (!reqFile) return null;
     if (reqFile.path && fs.existsSync(reqFile.path)) return reqFile.path;
-    
+
     const ext = path.extname(reqFile.originalname || 'file.png') || '.png';
     const filename = `${uuidv4()}${ext}`;
     const filePath = path.join(getUploadDir(subDir), filename);
-    
+
     if (reqFile.buffer) {
         fs.writeFileSync(filePath, reqFile.buffer);
     }
@@ -200,7 +200,7 @@ registrationSchema.index({ timestamp: -1 });
 const Registration = mongoose.model('Registration', registrationSchema);
 
 const eventSchema = new mongoose.Schema({
-    id: String, name: String, location: String, ownerName: String, ownerNumber: String, 
+    id: String, name: String, location: String, ownerName: String, ownerNumber: String,
     logoUrl: String, watermarkEnabled: Boolean, status: { type: String, default: 'active' }, createdAt: String,
     startDate: String, endDate: String, startTime: String, endTime: String, breakTime: String,
     bannerUrl: String, bannerCircleX: Number, bannerCircleY: Number, bannerCircleSize: Number, bannerMaskShape: String
@@ -240,12 +240,12 @@ async function safeGetClientUsers() {
             // If Mongo is empty but dbStore has users, persist them to Mongo
             if (dbStore.clientUsers && dbStore.clientUsers.length > 0) {
                 for (const u of dbStore.clientUsers) {
-                    await ClientUser.updateOne({ id: u.id }, { $set: u }, { upsert: true }).catch(() => {});
+                    await ClientUser.updateOne({ id: u.id }, { $set: u }, { upsert: true }).catch(() => { });
                 }
                 return dbStore.clientUsers;
             }
         }
-    } catch (e) {}
+    } catch (e) { }
     return dbStore.clientUsers || [];
 }
 
@@ -263,7 +263,7 @@ async function safeGetClientUserById(id) {
             const u = await ClientUser.findOne(query).lean();
             if (u) return u;
         }
-    } catch(e) {}
+    } catch (e) { }
     return (dbStore.clientUsers || []).find(u => String(u.id) === targetId || String(u._id) === targetId) || null;
 }
 
@@ -276,7 +276,7 @@ async function safeGetClientUserByUsername(username) {
             const u = await ClientUser.findOne({ username: uname }).lean();
             if (u) return u;
         }
-    } catch(e) {}
+    } catch (e) { }
     return (dbStore.clientUsers || []).find(u => String(u.username || '').toLowerCase().trim() === uname) || null;
 }
 
@@ -289,7 +289,7 @@ async function safeGetClientUserBySessionToken(token) {
             const u = await ClientUser.findOne({ activeSessionToken: tok }).lean();
             if (u) return u;
         }
-    } catch(e) {}
+    } catch (e) { }
     return (dbStore.clientUsers || []).find(u => String(u.activeSessionToken || '').trim() === tok) || null;
 }
 
@@ -307,7 +307,7 @@ async function safeSaveClientUser(userData) {
             const query = userData.id ? { id: userData.id } : { username: userData.username };
             await ClientUser.updateOne(query, { $set: userData }, { upsert: true });
         }
-    } catch (e) {}
+    } catch (e) { }
 }
 
 async function safeDeleteClientUser(id) {
@@ -326,7 +326,7 @@ async function safeDeleteClientUser(id) {
             const query = (conditions.length > 1) ? { $or: conditions } : conditions[0];
             await ClientUser.deleteMany(query);
         }
-    } catch (e) {}
+    } catch (e) { }
 }
 
 async function ensureDefaultClientUser() {
@@ -352,7 +352,7 @@ async function ensureDefaultClientUser() {
             await safeSaveClientUser(defUser);
             console.log('[Auth] Initialized default rental client: username=client1, password=password123');
         }
-    } catch(e) {}
+    } catch (e) { }
 }
 ensureDefaultClientUser();
 
@@ -366,7 +366,7 @@ async function safeGetRegistrations(includeResultData = false, limit = 0) {
             const list = await query;
             if (list) return list;
         }
-    } catch (e) {}
+    } catch (e) { }
     if (dbStore.registrations) {
         let items = dbStore.registrations;
         if (!includeResultData) {
@@ -388,7 +388,7 @@ async function safeGetEvents() {
             const evs = await EventModel.find().sort({ _id: -1 }).lean();
             if (evs) return evs;
         }
-    } catch (e) {}
+    } catch (e) { }
     return dbStore.events || [];
 }
 
@@ -431,7 +431,7 @@ function loadConfigTemplates() {
                 };
             });
         }
-    } catch(e) {
+    } catch (e) {
         console.warn("Notice loading template_config.json:", e.message);
     }
     return [];
@@ -470,7 +470,7 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
             }
         }
     }
-    
+
     try {
         await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
@@ -510,10 +510,10 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
 
     const mapped = list.map(t => {
         const tid = t.id || (t._id ? t._id.toString() : '');
-        const cleanUrl = (t.imageUrl && !t.imageUrl.startsWith('data:image')) 
-            ? t.imageUrl 
+        const cleanUrl = (t.imageUrl && !t.imageUrl.startsWith('data:image'))
+            ? t.imageUrl
             : `/uploads/templates/${tid}.png`;
-        
+
         const resObj = {
             ...t,
             id: tid,
@@ -544,7 +544,7 @@ async function safeFindUserByEmail(email) {
             const user = await Registration.findOne({ email: new RegExp('^' + cleanEmail + '$', 'i') }).sort({ _id: -1 }).lean();
             if (user) return user;
         }
-    } catch (e) {}
+    } catch (e) { }
     if (dbStore.registrations) {
         for (const reg of dbStore.registrations) {
             if (reg.email && reg.email.trim().toLowerCase() === cleanEmail) {
@@ -563,7 +563,7 @@ async function safeFindRegistrationById(id) {
             const reg = await Registration.findOne({ id }).lean();
             if (reg) return reg;
         }
-    } catch (e) {}
+    } catch (e) { }
     if (dbStore.registrations) {
         const found = dbStore.registrations.find(r => r.id === id);
         if (found) return found;
@@ -600,7 +600,7 @@ async function safeSaveEvent(evData) {
         if (mongoose.connection.readyState === 1) {
             await EventModel.updateOne({ id: evData.id }, { $set: evData }, { upsert: true });
         }
-    } catch (e) {}
+    } catch (e) { }
 }
 
 // In-memory cache of template_config to avoid reading 6MB from disk on every request
@@ -630,7 +630,7 @@ function getTemplateConfigCache() {
         } else {
             _templateConfigCache = { templates: [] };
         }
-    } catch(e) {
+    } catch (e) {
         _templateConfigCache = { templates: [] };
     }
     return _templateConfigCache;
@@ -658,7 +658,7 @@ function flushTemplateConfigToDisk() {
         fs.writeFileSync(configPath, JSON.stringify(stripped, null, 2));
         _templateConfigDirty = false;
         console.log(`[TemplateConfig] Flushed ${stripped.templates.length} templates to disk (lean, no Base64)`);
-    } catch(e) {
+    } catch (e) {
         console.warn('Notice flushing template_config.json:', e.message);
     }
 }
@@ -685,7 +685,7 @@ function saveToTemplateConfig(tData) {
         else cfg.templates.unshift(cleanData);
         scheduleTemplateConfigFlush(true); // urgent: write soon
         console.log(`[TemplateConfig] Queued template '${tData.name}' (${tData.id}) for disk flush`);
-    } catch(e) {
+    } catch (e) {
         console.warn("Notice updating template_config.json:", e.message);
     }
 }
@@ -700,7 +700,7 @@ function deleteFromTemplateConfig(id) {
             scheduleTemplateConfigFlush(false); // defer: not urgent
             console.log(`[TemplateConfig] Queued removal of template ${id}`);
         }
-    } catch(e) {}
+    } catch (e) { }
 }
 
 function clearTemplateConfig() {
@@ -708,7 +708,7 @@ function clearTemplateConfig() {
     try {
         _templateConfigCache = { templates: [] };
         scheduleTemplateConfigFlush(true);
-    } catch(e) {}
+    } catch (e) { }
 }
 
 async function safeSaveTemplate(tData) {
@@ -741,14 +741,14 @@ async function safeDeleteEvent(id) {
         if (mongoose.connection.readyState === 1) {
             await EventModel.deleteOne({ id });
         }
-    } catch (e) {}
+    } catch (e) { }
 }
 
 async function safeDeleteRegistration(id) {
     if (!id) return false;
     const targetId = String(id).trim();
     let found = null;
-    
+
     // 1. Delete from memory/dbStore
     if (dbStore.registrations) {
         const idx = dbStore.registrations.findIndex(r => String(r.id) === targetId || String(r._id) === targetId);
@@ -767,7 +767,7 @@ async function safeDeleteRegistration(id) {
                 conditions.push({ _id: new mongoose.Types.ObjectId(targetId) });
             }
             const query = (conditions.length > 1) ? { $or: conditions } : conditions[0];
-            
+
             if (!found) {
                 found = await Registration.findOne(query).lean();
             }
@@ -854,7 +854,7 @@ async function safeDeleteRegistrations(ids) {
                 const local = path.join(__dirname, item.selfieUrl.replace(/^\//, ''));
                 if (fs.existsSync(local)) fs.unlinkSync(local);
             }
-        } catch(e) {}
+        } catch (e) { }
     });
 
     return deletedCount;
@@ -909,7 +909,7 @@ async function safeDeleteRegistrationsByEvent(eventId) {
                 const local = path.join(__dirname, item.selfieUrl.replace(/^\//, ''));
                 if (fs.existsSync(local)) fs.unlinkSync(local);
             }
-        } catch(e) {}
+        } catch (e) { }
     });
 
     return deletedCount;
@@ -976,7 +976,7 @@ async function ensureDBConnected() {
             dbConnPromise = null;
         });
     }
-    try { await dbConnPromise; } catch(e) {}
+    try { await dbConnPromise; } catch (e) { }
     return mongoose.connection;
 }
 
@@ -1037,30 +1037,30 @@ dbConnPromise = connectDB().finally(() => { dbConnPromise = null; });
 
 // Dynamic Auto Status Check helper
 function checkEventStatus(event) {
-    if(!event) return 'deactive';
-    if(event.status === 'closed' || event.status === 'deactive') return event.status;
+    if (!event) return 'deactive';
+    if (event.status === 'closed' || event.status === 'deactive') return event.status;
     const now = new Date();
     try {
-        if(event.startDate && event.endDate) {
-            const start = new Date(event.startDate); 
-            const end = new Date(event.endDate); 
-            end.setHours(23,59,59);
-            if(!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-                if(now < start || now > end) return 'deactive';
+        if (event.startDate && event.endDate) {
+            const start = new Date(event.startDate);
+            const end = new Date(event.endDate);
+            end.setHours(23, 59, 59);
+            if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                if (now < start || now > end) return 'deactive';
             }
         }
-    } catch(e) {}
+    } catch (e) { }
 
     try {
-        if(typeof event.startTime === 'string' && typeof event.endTime === 'string' && event.startTime.includes(':') && event.endTime.includes(':')) {
-           const [sh, sm] = event.startTime.split(':').map(Number);
-           const [eh, em] = event.endTime.split(':').map(Number);
-           if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
-               const minsNow = now.getHours()*60 + now.getMinutes();
-               if(minsNow < (sh*60+sm) || minsNow > (eh*60+em)) return 'deactive';
-           }
+        if (typeof event.startTime === 'string' && typeof event.endTime === 'string' && event.startTime.includes(':') && event.endTime.includes(':')) {
+            const [sh, sm] = event.startTime.split(':').map(Number);
+            const [eh, em] = event.endTime.split(':').map(Number);
+            if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+                const minsNow = now.getHours() * 60 + now.getMinutes();
+                if (minsNow < (sh * 60 + sm) || minsNow > (eh * 60 + em)) return 'deactive';
+            }
         }
-    } catch(e) {}
+    } catch (e) { }
     return 'active';
 }
 
@@ -1081,7 +1081,7 @@ app.get('/share/:id', async (req, res) => {
         const publicUrl = getPublicUrl(req);
         const furl = (reg.resultUrl && reg.resultUrl.startsWith('http')) ? reg.resultUrl : `${publicUrl}${reg.resultUrl}`;
         const imgSrc = reg.resultData || furl;
-        
+
         res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1134,7 +1134,7 @@ app.get('/share/:id', async (req, res) => {
     </script>
 </body>
 </html>`);
-    } catch(e) {
+    } catch (e) {
         res.status(500).send("Error loading share page: " + e.message);
     }
 });
@@ -1144,14 +1144,14 @@ app.get('/api/qr/:id', async (req, res) => {
     try {
         const reg = await safeFindRegistrationById(req.params.id);
         if (!reg) return res.status(404).send("Not found");
-        
+
         const publicUrl = getPublicUrl(req);
         const shareUrl = `${publicUrl}/share/${reg.id}?t=${reg.token || 'valid'}`;
-        
+
         const qrDataUrl = await QRCode.toDataURL(shareUrl, { width: 300, margin: 2 });
         const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, "");
         const img = Buffer.from(base64Data, 'base64');
-        
+
         res.writeHead(200, {
             'Content-Type': 'image/png',
             'Content-Length': img.length
@@ -1245,7 +1245,7 @@ app.get('/api/admin/stats', async (req, res) => {
 // EVENTS Management
 app.get('/api/admin/events', async (req, res) => {
     const evs = await safeGetEvents();
-    res.json(evs.map(e => ({...e, liveState: checkEventStatus(e)})));
+    res.json(evs.map(e => ({ ...e, liveState: checkEventStatus(e) })));
 });
 
 // Admin Magic Hour Status Diagnostic Endpoint
@@ -1277,7 +1277,7 @@ app.post('/api/admin/template-config', (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/admin/events', upload.fields([{name:'logo'}, {name:'banner'}]), async (req, res) => {
+app.post('/api/admin/events', upload.fields([{ name: 'logo' }, { name: 'banner' }]), async (req, res) => {
     const body = req.body;
     if (req.files) {
         if (req.files['logo'] && req.files['logo'][0]) ensureFileSaved(req.files['logo'][0], 'templates');
@@ -1287,7 +1287,7 @@ app.post('/api/admin/events', upload.fields([{name:'logo'}, {name:'banner'}]), a
         id: uuidv4(), name: body.name, location: body.location, ownerName: body.ownerName, ownerNumber: body.ownerNumber,
         startDate: body.startDate, endDate: body.endDate, startTime: body.startTime, endTime: body.endTime, breakTime: body.breakTime,
         watermarkEnabled: body.watermarkEnabled === 'true',
-        bannerCircleX: parseInt(body.circleX)||0, bannerCircleY: parseInt(body.circleY)||0, bannerCircleSize: parseInt(body.circleSize)||300, bannerMaskShape: body.maskShape || 'circle',
+        bannerCircleX: parseInt(body.circleX) || 0, bannerCircleY: parseInt(body.circleY) || 0, bannerCircleSize: parseInt(body.circleSize) || 300, bannerMaskShape: body.maskShape || 'circle',
         logoUrl: (req.files && req.files['logo'] && req.files['logo'][0]) ? `/uploads/templates/${req.files['logo'][0].filename}` : "",
         bannerUrl: (req.files && req.files['banner'] && req.files['banner'][0]) ? `/uploads/templates/${req.files['banner'][0].filename}` : "",
         createdAt: new Date().toISOString(), status: 'active'
@@ -1299,16 +1299,16 @@ app.post('/api/admin/events', upload.fields([{name:'logo'}, {name:'banner'}]), a
 app.patch('/api/admin/events/:id/status', async (req, res) => {
     const evs = await safeGetEvents();
     const ev = evs.find(e => e.id === req.params.id);
-    if(ev) { ev.status = req.body.status; await safeSaveEvent(ev); }
+    if (ev) { ev.status = req.body.status; await safeSaveEvent(ev); }
     res.json(ev || { success: true });
 });
 
-app.put('/api/admin/events/:id', upload.fields([{name:'logo'}, {name:'banner'}]), async (req, res) => {
+app.put('/api/admin/events/:id', upload.fields([{ name: 'logo' }, { name: 'banner' }]), async (req, res) => {
     const body = req.body;
     const evs = await safeGetEvents();
     let ev = evs.find(e => e.id === req.params.id);
-    if(!ev) return res.status(404).json({ error: "Event not found" });
-    
+    if (!ev) return res.status(404).json({ error: "Event not found" });
+
     if (req.files) {
         if (req.files['logo'] && req.files['logo'][0]) ensureFileSaved(req.files['logo'][0], 'templates');
         if (req.files['banner'] && req.files['banner'][0]) ensureFileSaved(req.files['banner'][0], 'templates');
@@ -1410,7 +1410,7 @@ app.post('/api/auth/client-login', async (req, res) => {
                 pricePerPhoto: user.pricePerPhoto ?? 0.80
             }
         });
-    } catch(e) {
+    } catch (e) {
         console.error("Client login error:", e.message);
         res.status(500).json({ success: false, error: e.message });
     }
@@ -1457,7 +1457,7 @@ app.get('/api/auth/client-verify', async (req, res) => {
 
         // Update last active time in background (non-blocking)
         user.lastActiveAt = new Date().toISOString();
-        safeSaveClientUser(user).catch(() => {});
+        safeSaveClientUser(user).catch(() => { });
 
         let eventName = user.eventName || 'General Event';
         if (user.eventId && user.eventId !== 'default') {
@@ -1478,7 +1478,7 @@ app.get('/api/auth/client-verify', async (req, res) => {
                 pricePerPhoto: user.pricePerPhoto ?? 0.80
             }
         });
-    } catch(e) {
+    } catch (e) {
         console.error("Client verify error:", e.message);
         res.status(500).json({ success: false, code: 'SERVER_ERROR', error: e.message });
     }
@@ -1501,7 +1501,7 @@ app.post('/api/auth/client-logout', async (req, res) => {
             }
         }
         res.json({ success: true });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1546,7 +1546,7 @@ app.get('/api/admin/clients', async (req, res) => {
         });
 
         res.json({ success: true, clients: data });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1572,8 +1572,8 @@ app.post('/api/admin/clients', async (req, res) => {
             if (foundEv) evName = foundEv.name;
         }
 
-        const effectiveRate = (ratePerPhoto !== undefined && parseFloat(ratePerPhoto) >= 0) 
-            ? parseFloat(ratePerPhoto) 
+        const effectiveRate = (ratePerPhoto !== undefined && parseFloat(ratePerPhoto) >= 0)
+            ? parseFloat(ratePerPhoto)
             : ((pricePerPhoto !== undefined && parseFloat(pricePerPhoto) >= 0) ? parseFloat(pricePerPhoto) : 0.80);
 
         const newClient = {
@@ -1596,7 +1596,7 @@ app.post('/api/admin/clients', async (req, res) => {
         await safeSaveClientUser(newClient);
         console.log(`[Admin] Created rental client: ${newClient.username} (${newClient.name})`);
         res.json({ success: true, client: newClient });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1628,7 +1628,7 @@ app.put('/api/admin/clients/:id', async (req, res) => {
 
         await safeSaveClientUser(user);
         res.json({ success: true, client: user });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1648,7 +1648,7 @@ app.put('/api/admin/clients/:id/templates', async (req, res) => {
         await safeSaveClientUser(user);
         console.log(`[Admin] Updated assigned templates for ${user.username}: [${user.allowedTemplates.join(', ')}]`);
         res.json({ success: true, allowedTemplates: user.allowedTemplates, client: user });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1658,7 +1658,7 @@ app.delete('/api/admin/clients/:id', async (req, res) => {
     try {
         await safeDeleteClientUser(req.params.id);
         res.json({ success: true });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1673,7 +1673,7 @@ app.post('/api/admin/clients/:id/kickout', async (req, res) => {
         await safeSaveClientUser(user);
         console.log(`[Admin] Force kicked out active session for client '${user.username}'`);
         res.json({ success: true, message: `Active device session for '${user.username}' terminated.` });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1697,7 +1697,7 @@ app.get('/api/admin/clients/:id/invoice', async (req, res) => {
             totalAmount: total,
             invoiceDate: new Date().toISOString()
         });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1706,7 +1706,7 @@ app.delete('/api/admin/leads/:id', async (req, res) => {
     try {
         await safeDeleteRegistration(req.params.id);
         res.json({ success: true, id: req.params.id });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1719,7 +1719,7 @@ app.post('/api/admin/leads/bulk-delete', async (req, res) => {
         }
         const count = await safeDeleteRegistrations(ids);
         res.json({ success: true, deletedCount: count });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1728,7 +1728,7 @@ app.delete('/api/admin/leads-event/:eventId', async (req, res) => {
     try {
         const count = await safeDeleteRegistrationsByEvent(req.params.eventId);
         res.json({ success: true, deletedCount: count });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -1769,7 +1769,7 @@ app.get('/api/admin/events-summary', async (req, res) => {
                 countsMap[k].count++;
             });
         }
-        
+
         const summary = evs.map(ev => {
             const data = countsMap[ev.id] || { count: 0, lastTime: null };
             return {
@@ -1814,7 +1814,7 @@ app.get('/api/admin/events-summary', async (req, res) => {
             totalPhotos: totalPhotos,
             events: summary
         });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
@@ -1858,8 +1858,8 @@ app.get('/api/templates', async (req, res) => {
 
         let temps = await safeGetTemplates();
         let evs = await safeGetEvents();
-        let activeEvent = evs.find(e => checkEventStatus(e) === 'active'); 
-        
+        let activeEvent = evs.find(e => checkEventStatus(e) === 'active');
+
         let activeTemps = temps.filter(t => t.isActive !== false);
 
         // Filter templates based on client user and template assignments
@@ -1892,24 +1892,24 @@ app.get('/api/templates', async (req, res) => {
 
         if (activeEvent && activeEvent.bannerUrl && activeEvent.bannerUrl.length > 5) {
             activeTemps.unshift({
-                id: 'EVENT_BANNER', 
-                name: `🔥 ${activeEvent.name} (LIVE)`, 
+                id: 'EVENT_BANNER',
+                name: `🔥 ${activeEvent.name} (LIVE)`,
                 imageUrl: activeEvent.bannerUrl,
-                circleX: activeEvent.bannerCircleX || 540, 
-                circleY: activeEvent.bannerCircleY || 450, 
+                circleX: activeEvent.bannerCircleX || 540,
+                circleY: activeEvent.bannerCircleY || 450,
                 circleSize: activeEvent.bannerCircleSize || 600,
-                maskShape: activeEvent.bannerMaskShape || 'circle', 
+                maskShape: activeEvent.bannerMaskShape || 'circle',
                 isActive: true
             });
         }
-        
+
         const lightTemps = activeTemps.map(t => {
             const { imageData, ...rest } = t;
             return rest;
         });
 
         res.json(lightTemps);
-    } catch(e) {
+    } catch (e) {
         console.error("Templates Fetch Notice:", e.message);
         try {
             const temps = await safeGetTemplates();
@@ -1918,7 +1918,7 @@ app.get('/api/templates', async (req, res) => {
                 return rest;
             });
             res.json(lightTemps);
-        } catch(err) {
+        } catch (err) {
             res.json([]);
         }
     }
@@ -1929,7 +1929,7 @@ app.get('/api/admin/templates', async (req, res) => {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         const temps = await safeGetTemplates(true, false);
         res.json(temps);
-    } catch(err) {
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
@@ -1959,7 +1959,7 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
             ensureFileSaved(req.file, 'templates');
             let fileBuf = req.file.buffer;
             if (!fileBuf && req.file.path && fs.existsSync(req.file.path)) {
-                try { fileBuf = fs.readFileSync(req.file.path); } catch(e) {}
+                try { fileBuf = fs.readFileSync(req.file.path); } catch (e) { }
             }
             if (fileBuf) {
                 try {
@@ -1970,14 +1970,14 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
                     base64Data = `data:image/jpeg;base64,${compressedBuf.toString('base64')}`;
                     relUrl = `/uploads/templates/${tId}.jpg`;
                     const diskPath = path.join(getUploadDir('templates'), `${tId}.jpg`);
-                    try { fs.writeFileSync(diskPath, compressedBuf); } catch(e) {}
-                } catch(sharpErr) {
+                    try { fs.writeFileSync(diskPath, compressedBuf); } catch (e) { }
+                } catch (sharpErr) {
                     console.error("Sharp error on update:", sharpErr.message);
                     const mime = req.file.mimetype || 'image/jpeg';
                     base64Data = `data:${mime};base64,${fileBuf.toString('base64')}`;
                     relUrl = `/uploads/templates/${tId}.jpg`;
                     const diskPath = path.join(getUploadDir('templates'), `${tId}.jpg`);
-                    try { fs.writeFileSync(diskPath, fileBuf); } catch(e) {}
+                    try { fs.writeFileSync(diskPath, fileBuf); } catch (e) { }
                 }
             }
         }
@@ -2007,7 +2007,7 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
                         const parsed = JSON.parse(val);
                         if (Array.isArray(parsed)) assignedClients = parsed.map(String).filter(Boolean);
                         else assignedClients = [val];
-                    } catch(e) {
+                    } catch (e) {
                         assignedClients = val.split(',').map(s => s.trim()).filter(Boolean);
                     }
                 }
@@ -2054,7 +2054,7 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
 
         const { imageData, ...lightweightT } = t;
         res.json({ ...lightweightT, imageUrl: relUrl });
-    } catch(e) {
+    } catch (e) {
         console.error("Error updating template:", e);
         res.status(500).json({ error: e.message });
     }
@@ -2102,7 +2102,7 @@ app.put('/api/admin/templates/:id/assign-clients', async (req, res) => {
 
         console.log(`[Admin] Template ${t.name} (${t.id}) client assignment updated: [${assignedClients.join(', ')}]`);
         res.json({ success: true, templateId: t.id, assignedClients: t.assignedClients });
-    } catch(e) {
+    } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -2117,7 +2117,7 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
             ensureFileSaved(req.file, 'templates');
             let fileBuf = req.file.buffer;
             if (!fileBuf && req.file.path && fs.existsSync(req.file.path)) {
-                try { fileBuf = fs.readFileSync(req.file.path); } catch(e) {}
+                try { fileBuf = fs.readFileSync(req.file.path); } catch (e) { }
             }
             if (fileBuf) {
                 try {
@@ -2128,14 +2128,14 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
                     base64Data = `data:image/jpeg;base64,${compressedBuf.toString('base64')}`;
                     relUrl = `/uploads/templates/${tId}.jpg`;
                     const diskPath = path.join(getUploadDir('templates'), `${tId}.jpg`);
-                    try { fs.writeFileSync(diskPath, compressedBuf); } catch(e) {}
-                } catch(sharpErr) {
+                    try { fs.writeFileSync(diskPath, compressedBuf); } catch (e) { }
+                } catch (sharpErr) {
                     console.error("Sharp error on upload:", sharpErr.message);
                     const mime = req.file.mimetype || 'image/jpeg';
                     base64Data = `data:${mime};base64,${fileBuf.toString('base64')}`;
                     relUrl = `/uploads/templates/${tId}.jpg`;
                     const diskPath = path.join(getUploadDir('templates'), `${tId}.jpg`);
-                    try { fs.writeFileSync(diskPath, fileBuf); } catch(e) {}
+                    try { fs.writeFileSync(diskPath, fileBuf); } catch (e) { }
                 }
             }
         }
@@ -2164,7 +2164,7 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
                         const parsed = JSON.parse(val);
                         if (Array.isArray(parsed)) assignedClients = parsed.map(String).filter(Boolean);
                         else assignedClients = [val];
-                    } catch(e) {
+                    } catch (e) {
                         assignedClients = val.split(',').map(s => s.trim()).filter(Boolean);
                     }
                 }
@@ -2211,7 +2211,7 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
 
         const { imageData, ...lightweightT } = t;
         res.json({ ...lightweightT, imageUrl: relUrl });
-    } catch(e) {
+    } catch (e) {
         console.error("Error creating template:", e);
         res.status(500).json({ error: e.message });
     }
@@ -2233,7 +2233,7 @@ try {
     if (false) {
         require('@imgly/background-removal-data');
     }
-} catch(e) {}
+} catch (e) { }
 
 async function performBackgroundRemoval(inputPath) {
     try {
@@ -2243,7 +2243,7 @@ async function performBackgroundRemoval(inputPath) {
             .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
             .png()
             .toBuffer();
-        
+
         // AI Auto-Relighting & Exposure Correction for Dim/Dark Selfies
         try {
             const stats = await sharp(orientedSelfieBuf).stats();
@@ -2253,7 +2253,7 @@ async function performBackgroundRemoval(inputPath) {
                 meanBrightness = sum / stats.channels.length;
             }
             console.log(`[AI-AutoEnhance] Input image mean brightness: ${meanBrightness.toFixed(1)}`);
-            
+
             if (meanBrightness > 0 && meanBrightness < 120) {
                 const boostFactor = Math.min(1.35, 1.0 + ((120 - meanBrightness) / 200));
                 console.log(`[AI-AutoEnhance] Auto-boosting dim selfie exposure by factor: ${boostFactor.toFixed(2)}`);
@@ -2269,12 +2269,12 @@ async function performBackgroundRemoval(inputPath) {
                     .png()
                     .toBuffer();
             }
-        } catch(enhErr) {
+        } catch (enhErr) {
             console.warn("AI Auto-Enhance notice:", enhErr.message);
         }
-        
+
         fs.writeFileSync(inputPath, orientedSelfieBuf);
-    } catch(e) {}
+    } catch (e) { }
 
     let cutoutBuffer = null;
 
@@ -2290,9 +2290,9 @@ async function performBackgroundRemoval(inputPath) {
                 });
             });
             cutoutBuffer = fs.readFileSync(tmpOut);
-            try { fs.unlinkSync(tmpOut); } catch(err) {}
+            try { fs.unlinkSync(tmpOut); } catch (err) { }
             console.log(`[BackgroundRemoval] Python rembg SUCCESS (${cutoutBuffer.length} bytes)!`);
-        } catch(pyErr) {
+        } catch (pyErr) {
             console.warn(`[BackgroundRemoval] Local Python notice: ${pyErr.message}`);
         }
     }
@@ -2301,7 +2301,7 @@ async function performBackgroundRemoval(inputPath) {
     if (!cutoutBuffer) {
         try {
             const { Client } = require('@gradio/client');
-            
+
             // Downscale selfie to 720px for fast cloud transmission & inference
             let sendBuf = fs.readFileSync(inputPath);
             try {
@@ -2309,7 +2309,7 @@ async function performBackgroundRemoval(inputPath) {
                     .resize(720, 720, { fit: 'inside', withoutEnlargement: true })
                     .png({ quality: 85 })
                     .toBuffer();
-            } catch(reErr) {}
+            } catch (reErr) { }
 
             const blob = new Blob([sendBuf], { type: 'image/png' });
             const hfToken = process.env.HF_TOKEN || process.env.HUGGINGFACE_TOKEN || process.env.HUGGING_FACE_HUB_TOKEN;
@@ -2326,7 +2326,7 @@ async function performBackgroundRemoval(inputPath) {
                 let url = null;
                 if (Array.isArray(res?.data) && res.data[0]?.url) url = res.data[0].url;
                 else if (res?.data?.url) url = res.data.url;
-                
+
                 if (url) {
                     const imgResp = await axios.get(url, { responseType: 'arraybuffer', timeout: 15000 });
                     cutoutBuffer = await sharp(Buffer.from(imgResp.data))
@@ -2335,7 +2335,7 @@ async function performBackgroundRemoval(inputPath) {
                         .toBuffer();
                     console.log(`[BackgroundRemoval] not-lain Cloud AI SUCCESS (${cutoutBuffer.length} bytes)!`);
                 }
-            } catch(nlErr) {
+            } catch (nlErr) {
                 console.warn("[BackgroundRemoval] not-lain notice:", nlErr.message);
             }
 
@@ -2363,11 +2363,11 @@ async function performBackgroundRemoval(inputPath) {
                             .toBuffer();
                         console.log(`[BackgroundRemoval] briaai Cloud AI SUCCESS (${cutoutBuffer.length} bytes)!`);
                     }
-                } catch(briaErr) {
+                } catch (briaErr) {
                     console.warn("[BackgroundRemoval] briaai notice:", briaErr.message);
                 }
             }
-        } catch(spaceErr) {
+        } catch (spaceErr) {
             console.warn(`[BackgroundRemoval] Cloud AI overall notice: ${spaceErr.message}`);
         }
     }
@@ -2377,15 +2377,15 @@ async function performBackgroundRemoval(inputPath) {
         try {
             console.log("[BackgroundRemoval] Trying in-memory @imgly neural engine (model: small)...");
             const { removeBackground } = require('@imgly/background-removal-node');
-            
+
             let imglyInputBuf = fs.readFileSync(inputPath);
             try {
                 imglyInputBuf = await sharp(imglyInputBuf)
                     .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
                     .png()
                     .toBuffer();
-            } catch(e) {}
-            
+            } catch (e) { }
+
             const localDataDir = path.resolve(__dirname, 'node_modules/@imgly/background-removal-data/dist');
             let publicPath = undefined;
             if (fs.existsSync(localDataDir)) {
@@ -2401,7 +2401,7 @@ async function performBackgroundRemoval(inputPath) {
             const arrayBuffer = await outputBlob.arrayBuffer();
             cutoutBuffer = await sharp(Buffer.from(arrayBuffer)).ensureAlpha().png().toBuffer();
             console.log(`[BackgroundRemoval] @imgly neural engine SUCCESS (${cutoutBuffer.length} bytes)!`);
-        } catch(imglyErr) {
+        } catch (imglyErr) {
             console.warn(`[BackgroundRemoval] @imgly fallback notice: ${imglyErr.message}`);
         }
     }
@@ -2434,7 +2434,7 @@ async function performBackgroundRemoval(inputPath) {
                 .composite([{ input: Buffer.from(maskSvg), blend: 'dest-in' }])
                 .png()
                 .toBuffer();
-        } catch(maskErr) {
+        } catch (maskErr) {
             cutoutBuffer = await sharp(fs.readFileSync(inputPath)).ensureAlpha().png().toBuffer().catch(() => fs.readFileSync(inputPath));
         }
     }
@@ -2449,13 +2449,13 @@ app.post('/api/process-face', upload.single('selfie'), async (req, res) => {
     try {
         const outName = `face_${uuidv4()}.png`;
         const outPath = path.join(getUploadDir('selfies'), outName);
-        
+
         const cutoutBuffer = await performBackgroundRemoval(req.file.path);
         const orientedCutout = await sharp(cutoutBuffer).rotate().png().toBuffer();
         fs.writeFileSync(outPath, orientedCutout);
-        
+
         res.json({ faceUrl: `/uploads/selfies/${outName}` });
-    } catch(e) {
+    } catch (e) {
         console.error("Process Face Error:", e.message);
         res.status(500).json({ error: e.message || "Face processing failed" });
     }
@@ -2464,25 +2464,25 @@ app.post('/api/process-face', upload.single('selfie'), async (req, res) => {
 async function analyzeSelfie(filePath) {
     const fallback = "a photorealistic Indian young male, medium skin tone, short black hair, round face, clean-shaven";
     if (!process.env.GEMINI_API_KEY) return fallback;
-    
+
     const modelsToTry = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-pro"];
-    
+
     for (const modelName of modelsToTry) {
         try {
             const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
             const model = genAI.getGenerativeModel({ model: modelName });
-            const imgData = { 
-                inlineData: { 
-                    data: Buffer.from(fs.readFileSync(filePath)).toString("base64"), 
-                    mimeType: "image/jpeg" 
-                } 
+            const imgData = {
+                inlineData: {
+                    data: Buffer.from(fs.readFileSync(filePath)).toString("base64"),
+                    mimeType: "image/jpeg"
+                }
             };
             const prompt = `Analyze this person's face. Respond with ONLY a short comma-separated description. Include: gender, approximate age, skin tone, hair color and style, face shape, eye shape, any facial hair. Example: 'Indian male, 25 years old, medium brown skin, short black hair, oval face, dark brown eyes, clean-shaven'. Max 30 words.`;
             const result = await model.generateContent([prompt, imgData]);
             const text = result.response.text().trim();
             console.log(`Gemini Face Analysis (${modelName}):`, text);
             return text;
-        } catch (e) { 
+        } catch (e) {
             console.log(`Gemini model ${modelName} failed: ${e.message.substring(0, 80)}`);
         }
     }
@@ -2512,7 +2512,7 @@ async function autoEnhanceSubjectCutout(cutoutBuf) {
         console.log("[Studio-AI-Relighting] Applying Soft AI Relighting, Natural Face Tones & HD Portrait Clarity...");
         // Trim any empty transparent margins so placement is exact to the subject's actual body/feet
         let orientedBuf = await sharp(cutoutBuf).rotate().trim().png().toBuffer();
-        
+
         let enhanced = await sharp(orientedBuf)
             .modulate({
                 brightness: 1.04, // Soft, vibrant studio lighting
@@ -2545,7 +2545,7 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         try {
             const orientedSelfieBuf = await sharp(selfiePath).rotate().png().toBuffer();
             fs.writeFileSync(selfiePath, orientedSelfieBuf);
-        } catch(e) {}
+        } catch (e) { }
 
         // Query template data from MongoDB Atlas / store / config (BY ID OR BY NAME!)
         // CRITICAL: includeBase64=true because we NEED the actual image for compositing!
@@ -2560,20 +2560,20 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
                     console.log(`[BackdropComposite] Got template from MongoDB direct fetch: ${tmplData.name || templateId}`);
                 }
             }
-        } catch(e) { console.warn('[BackdropComposite] Direct MongoDB fetch warn:', e.message); }
+        } catch (e) { console.warn('[BackdropComposite] Direct MongoDB fetch warn:', e.message); }
 
         // Fallback to safeGetTemplates with includeBase64=true
         if (!tmplData) {
             try {
                 const allTemps = await safeGetTemplates(true, true); // includeBase64=true!
                 if (allTemps && allTemps.length > 0) {
-                    tmplData = allTemps.find(t => 
-                        t.id === templateId || 
+                    tmplData = allTemps.find(t =>
+                        t.id === templateId ||
                         (t.id && t.id.toLowerCase() === templateId.toLowerCase()) ||
                         (t.name && t.name.toLowerCase() === templateId.toLowerCase())
                     );
                 }
-            } catch(e) {}
+            } catch (e) { }
         }
 
         // Last resort: check in-memory template config cache (metadata only, no base64)
@@ -2583,28 +2583,28 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
                 if (cfg && cfg.templates) {
                     tmplData = cfg.templates.find(t => t.id === templateId || (t.name && t.name.toLowerCase() === templateId.toLowerCase()));
                 }
-            } catch(e) {}
+            } catch (e) { }
         }
 
         // 1. Try masterTemplatePath parameter if valid
         if (masterTemplatePath && fs.existsSync(masterTemplatePath) && fs.statSync(masterTemplatePath).size > 1000) {
-            try { masterBuffer = fs.readFileSync(masterTemplatePath); } catch(e) {}
+            try { masterBuffer = fs.readFileSync(masterTemplatePath); } catch (e) { }
         }
 
         // 2. Try tmplData Base64 or image URL (tmplData now has full imageData from MongoDB)
         if (!masterBuffer && tmplData) {
-            const uri = tmplData.imageData || tmplData.master_image || 
-                        (tmplData.imageUrl && tmplData.imageUrl.startsWith('data:image') ? tmplData.imageUrl : null);
+            const uri = tmplData.imageData || tmplData.master_image ||
+                (tmplData.imageUrl && tmplData.imageUrl.startsWith('data:image') ? tmplData.imageUrl : null);
             if (uri && uri.startsWith('data:image')) {
                 try {
                     const base64Str = uri.split(',')[1];
                     masterBuffer = Buffer.from(base64Str, 'base64');
                     // Also write to disk for future use
                     if (masterTemplatePath) {
-                        try { fs.writeFileSync(masterTemplatePath, masterBuffer); } catch(we) {}
+                        try { fs.writeFileSync(masterTemplatePath, masterBuffer); } catch (we) { }
                     }
                     console.log(`[BackdropComposite] Loaded template image from MongoDB Base64 (${tmplData.name || templateId})`);
-                } catch(e) {}
+                } catch (e) { }
             } else if (tmplData.imageUrl && (tmplData.imageUrl.startsWith('/uploads') || tmplData.imageUrl.startsWith('uploads'))) {
                 const relPath = tmplData.imageUrl.startsWith('/') ? tmplData.imageUrl.substring(1) : tmplData.imageUrl;
                 const localPath = path.join(__dirname, relPath);
@@ -2616,7 +2616,7 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         if (!masterBuffer) {
             const tmpTemplatePath = path.join(os.tmpdir(), 'uploads', 'templates', `${templateId}.png`);
             if (fs.existsSync(tmpTemplatePath) && fs.statSync(tmpTemplatePath).size > 1000) {
-                try { masterBuffer = fs.readFileSync(tmpTemplatePath); } catch(e) {}
+                try { masterBuffer = fs.readFileSync(tmpTemplatePath); } catch (e) { }
             }
         }
 
@@ -2726,7 +2726,7 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         const glowH = Math.min(mH, Math.round(subH * 1.04));
         const svgRimGlow = Buffer.from(`
         <svg width="${glowW}" height="${glowH}" xmlns="http://www.w3.org/2000/svg">
-            <ellipse cx="${glowW/2}" cy="${glowH*0.45}" rx="${glowW*0.44}" ry="${glowH*0.46}" fill="#fff4cc" opacity="0.22"/>
+            <ellipse cx="${glowW / 2}" cy="${glowH * 0.45}" rx="${glowW * 0.44}" ry="${glowH * 0.46}" fill="#fff4cc" opacity="0.22"/>
         </svg>`);
         const rimGlowBuffer = await sharp(svgRimGlow).blur(16).png().toBuffer();
         const glowLeft = Math.max(0, Math.min(Math.round(left - (glowW - subW) / 2), mW - glowW));
@@ -2739,12 +2739,12 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
             const shadowW = Math.min(mW, Math.round(subW * 0.82));
             const shadowH = Math.min(mH, Math.max(8, Math.round(subH * 0.06)));
 
-            const svgInnerShadow = Buffer.from(`<svg width="${shadowW}" height="${shadowH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${shadowW/2}" cy="${shadowH/2}" rx="${shadowW*0.46}" ry="${shadowH*0.42}" fill="#000" opacity="0.45"/></svg>`);
+            const svgInnerShadow = Buffer.from(`<svg width="${shadowW}" height="${shadowH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${shadowW / 2}" cy="${shadowH / 2}" rx="${shadowW * 0.46}" ry="${shadowH * 0.42}" fill="#000" opacity="0.45"/></svg>`);
             const innerShadowBuf = await sharp(svgInnerShadow).blur(3).png().toBuffer();
 
             const outerW = Math.min(mW, Math.round(shadowW * 1.3));
             const outerH = Math.min(mH, Math.round(shadowH * 1.6));
-            const svgOuterShadow = Buffer.from(`<svg width="${outerW}" height="${outerH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${outerW/2}" cy="${outerH/2}" rx="${outerW*0.45}" ry="${outerH*0.45}" fill="#000" opacity="0.25"/></svg>`);
+            const svgOuterShadow = Buffer.from(`<svg width="${outerW}" height="${outerH}" xmlns="http://www.w3.org/2000/svg"><ellipse cx="${outerW / 2}" cy="${outerH / 2}" rx="${outerW * 0.45}" ry="${outerH * 0.45}" fill="#000" opacity="0.25"/></svg>`);
             const outerShadowBuf = await sharp(svgOuterShadow).blur(9).png().toBuffer();
 
             const shadowLeft = Math.max(0, Math.min(Math.round(left + (subW - shadowW) / 2), mW - shadowW));
@@ -2778,7 +2778,7 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
                     compositeLayers.push({ input: resizedFrame, top: 0, left: 0 });
                     console.log("[BackdropComposite] Applied Dual-Layer Foreground Frame Overlay!");
                 }
-            } catch(frameErr) {
+            } catch (frameErr) {
                 console.warn("Foreground Frame Overlay notice:", frameErr.message);
             }
         }
@@ -2795,9 +2795,9 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
             const outDir = path.dirname(outputPath);
             if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
             fs.writeFileSync(outputPath, finalComposite);
-        } catch(wErr) {}
+        } catch (wErr) { }
 
-        try { if (fs.existsSync(tempSubjectCutout)) fs.unlinkSync(tempSubjectCutout); } catch(e) {}
+        try { if (fs.existsSync(tempSubjectCutout)) fs.unlinkSync(tempSubjectCutout); } catch (e) { }
         console.log(`[BackdropComposite] SUCCESS — AI Enhanced & Composite placed at left=${left}, top=${top}, ${subW}x${subH}px (master ${mW}x${mH})`);
         return { success: true, buffer: finalComposite, provider: "AI Photobooth High-Fidelity Engine" };
     } catch (e) {
@@ -2818,11 +2818,11 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
                 const outDir = path.dirname(outputPath);
                 if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
                 fs.writeFileSync(outputPath, fallbackComposite);
-            } catch(wErr) {}
-        } catch(fe) {
+            } catch (wErr) { }
+        } catch (fe) {
             console.error("Fallback composite error:", fe.message);
         }
-        try { if (fs.existsSync(tempSubjectCutout)) fs.unlinkSync(tempSubjectCutout); } catch(err) {}
+        try { if (fs.existsSync(tempSubjectCutout)) fs.unlinkSync(tempSubjectCutout); } catch (err) { }
         return { success: true, buffer: fallbackComposite, provider: "AI Photobooth High-Fidelity Engine" };
     }
 }
@@ -2841,7 +2841,7 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
             fs.writeFileSync(tmpPath, Buffer.from(b64Data, 'base64'));
             selfieFilePath = tmpPath;
             console.log(`[Register] Successfully extracted user selfie from Base64 payload (${b64Data.length} chars)`);
-        } catch(b64Err) {
+        } catch (b64Err) {
             console.error("Error decoding selfieBase64:", b64Err.message);
         }
     } else if (req.body && req.body.faceUrl) {
@@ -2864,8 +2864,8 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
 
     // Rental Client Authentication & Single-Device Enforcement
     const authHeader = req.headers.authorization;
-    const clientToken = (authHeader && authHeader.startsWith('Bearer ')) 
-        ? authHeader.substring(7).trim() 
+    const clientToken = (authHeader && authHeader.startsWith('Bearer '))
+        ? authHeader.substring(7).trim()
         : (req.body && req.body.clientToken ? String(req.body.clientToken).trim() : null);
 
     let clientUser = null;
@@ -2876,23 +2876,23 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
             // Only kick out if MongoDB is ready and genuinely rejected the token
             if (mongoose.connection.readyState === 1) {
                 console.warn(`[Register] Blocked generation attempt with invalid or expired session token: ${clientToken}`);
-                return res.status(401).json({ 
-                    success: false, 
-                    code: 'SESSION_INVALIDATED', 
-                    message: 'Aapka account kisi dusre device par login ho chuka hai. Is device se logout kiya ja raha hai.' 
+                return res.status(401).json({
+                    success: false,
+                    code: 'SESSION_INVALIDATED',
+                    message: 'Aapka account kisi dusre device par login ho chuka hai. Is device se logout kiya ja raha hai.'
                 });
             } else {
                 console.warn(`[Register] MongoDB reconnecting during token verify, proceeding with registration...`);
             }
         } else if (clientUser.status !== 'active') {
-            return res.status(403).json({ 
-                success: false, 
-                code: 'ACCOUNT_DISABLED', 
-                message: 'Yeh rental account disabled hai. Please Admin se contact karein.' 
+            return res.status(403).json({
+                success: false,
+                code: 'ACCOUNT_DISABLED',
+                message: 'Yeh rental account disabled hai. Please Admin se contact karein.'
             });
         } else {
             clientUser.lastActiveAt = new Date().toISOString();
-            safeSaveClientUser(clientUser).catch(() => {});
+            safeSaveClientUser(clientUser).catch(() => { });
         }
     }
 
@@ -2910,19 +2910,19 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
         } else if (evs && evs.length > 0) {
             activeEvent = evs.find(e => checkEventStatus(e) === 'active') || evs[0];
         }
-    } catch(e) {
+    } catch (e) {
         console.warn("Event query notice:", e.message);
     }
 
     let template = null;
     if (themeId === 'EVENT_BANNER') {
-        template = { 
-            id: 'EVENT_BANNER', 
-            name: activeEvent.name, 
-            imageUrl: activeEvent.bannerUrl || '/uploads/templates/default.png', 
-            circleX: activeEvent.bannerCircleX || 540, 
-            circleY: activeEvent.bannerCircleY || 540, 
-            circleSize: activeEvent.bannerCircleSize || 500, 
+        template = {
+            id: 'EVENT_BANNER',
+            name: activeEvent.name,
+            imageUrl: activeEvent.bannerUrl || '/uploads/templates/default.png',
+            circleX: activeEvent.bannerCircleX || 540,
+            circleY: activeEvent.bannerCircleY || 540,
+            circleSize: activeEvent.bannerCircleSize || 500,
             maskShape: activeEvent.bannerMaskShape || 'circle',
             isBanner: true,
             mode: 'backdrop'
@@ -2931,29 +2931,29 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
         try {
             const allTemps = await safeGetTemplates(true);
             template = allTemps.find(t => t.id === themeId);
-        } catch(e) {
+        } catch (e) {
             console.warn("Template query notice:", e.message);
         }
     }
 
     const regObject = {
-        id: regId, 
+        id: regId,
         token: token,
-        eventId: activeEvent ? activeEvent.id : 'default', 
+        eventId: activeEvent ? activeEvent.id : 'default',
         eventName: activeEvent ? activeEvent.name : 'General Event',
         clientId: clientUser ? clientUser.id : null,
         clientUsername: clientUser ? clientUser.username : null,
         clientName: clientUser ? clientUser.name : null,
-        name: name || 'Anonymous', 
-        email: email || 'N/A', 
-        phone: phone || 'N/A', 
-        gender: gender || 'Not Specified', 
-        company: company || "Self", 
-        personaDescription: themeName || (template ? template.name : "Creating your Masterpiece..."), 
-        usedProvider: "processing", 
-        selfieUrl: selfieUrl, 
-        resultUrl: `/uploads/results/${resultFilename}`, 
-        timestamp: new Date().toISOString() 
+        name: name || 'Anonymous',
+        email: email || 'N/A',
+        phone: phone || 'N/A',
+        gender: gender || 'Not Specified',
+        company: company || "Self",
+        personaDescription: themeName || (template ? template.name : "Creating your Masterpiece..."),
+        usedProvider: "processing",
+        selfieUrl: selfieUrl,
+        resultUrl: `/uploads/results/${resultFilename}`,
+        timestamp: new Date().toISOString()
     };
     await safeSaveRegistration(regObject);
 
@@ -2966,8 +2966,8 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
         if (themeId === 'EVENT_BANNER') {
             activeTemp = template;
         } else if (themeId) {
-            activeTemp = allTemps.find(t => 
-                t.id === themeId || 
+            activeTemp = allTemps.find(t =>
+                t.id === themeId ||
                 (t.id && t.id.toLowerCase() === themeId.toLowerCase()) ||
                 (t.name && t.name.toLowerCase() === themeId.toLowerCase())
             );
@@ -2988,12 +2988,12 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
                     const base64Str = uri.split(',')[1];
                     fs.writeFileSync(templatePath, Buffer.from(base64Str, 'base64'));
                     console.log(`[Register] Extracted Base64 template to disk for admin template: ${templateName}`);
-                } catch(err) {
+                } catch (err) {
                     console.warn("Base64 template extract notice:", err.message);
                 }
             }
         }
-        
+
         // DEFAULT ALL TEMPLATES TO FULL-BODY BACKDROP COMPOSITE UNLESS EXPLICITLY FACE_SWAP MODE!
         const isBackdropMode = (activeTemp?.mode === 'face_swap') ? false : true;
 
@@ -3035,17 +3035,17 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
             try {
                 const resBuf = fs.readFileSync(resultPath);
                 regObject.resultData = `data:image/png;base64,${resBuf.toString('base64')}`;
-            } catch(e) {}
+            } catch (e) { }
         }
 
         regObject.usedProvider = swapResult ? swapResult.provider : "AI Photobooth Engine";
         regObject.personaDescription = templateName;
         await safeSaveRegistration(regObject);
-        
+
         const publicUrl = getPublicUrl(req);
         const shareUrl = `${publicUrl}/share/${regId}?t=${token}`;
         const qrUrl = `${publicUrl}/api/qr/${regId}`;
-        
+
         const responseData = {
             success: true,
             ...regObject,
@@ -3070,7 +3070,7 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
                 try {
                     const resBuf = fs.readFileSync(resultPath);
                     regObject.resultData = `data:image/png;base64,${resBuf.toString('base64')}`;
-                } catch(e) {}
+                } catch (e) { }
             }
             regObject.usedProvider = "AI Photobooth Engine";
             regObject.personaDescription = templateName || "Event Template";
@@ -3083,7 +3083,7 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
                 shareUrl: `${publicUrl}/share/${regId}?t=${token}`,
                 qrUrl: `${publicUrl}/api/qr/${regId}`
             });
-        } catch(fbErr) {
+        } catch (fbErr) {
             console.error("Fallback registration route error:", fbErr.message);
             res.json({
                 success: true,
@@ -3104,7 +3104,7 @@ app.post('/api/upload-result', upload.single('image'), async (req, res) => {
     try {
         let reg = null;
         if (mongoose.connection.readyState === 1) {
-            try { reg = await Registration.findOne({ id: regId }); } catch(e) {}
+            try { reg = await Registration.findOne({ id: regId }); } catch (e) { }
         }
         if (!reg && dbStore.registrations) {
             reg = dbStore.registrations.find(r => r.id === regId);
@@ -3112,26 +3112,26 @@ app.post('/api/upload-result', upload.single('image'), async (req, res) => {
         if (!reg) {
             return res.status(404).json({ error: 'Registration not found' });
         }
-        
+
         const targetFilename = `result_${regId}.png`;
         const targetPath = path.join(getUploadDir('results'), targetFilename);
-        
+
         if (req.file.path !== targetPath) {
-            try { fs.copyFileSync(req.file.path, targetPath); } catch(copyErr) {}
+            try { fs.copyFileSync(req.file.path, targetPath); } catch (copyErr) { }
         }
-        
+
         const resUrl = `/uploads/results/${targetFilename}`;
         if (typeof reg.save === 'function') {
             reg.resultUrl = resUrl;
-            await reg.save().catch(() => {});
+            await reg.save().catch(() => { });
         } else {
             reg.resultUrl = resUrl;
         }
         await safeSaveRegistration(reg);
-        
+
         console.log("Successfully updated final result image on server for regId:", regId);
         res.json({ success: true, resultUrl: resUrl });
-    } catch(e) {
+    } catch (e) {
         console.error("Upload result error:", e.message);
         res.status(500).json({ error: e.message });
     }

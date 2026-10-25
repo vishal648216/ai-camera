@@ -48,7 +48,7 @@
         headerTitle: document.getElementById('header-title'),
         serverStatusPill: document.getElementById('server-status-pill'),
         serverStatusText: document.getElementById('server-status-text'),
-        
+
         // Screens
         screenSelfie: document.getElementById('screen-selfie'),
         screenThemes: document.getElementById('screen-themes'),
@@ -68,7 +68,7 @@
         fileInputGallery: document.getElementById('file-input-gallery'),
         btnProceedThemes: document.getElementById('btn-proceed-themes'),
         hiddenSnapCanvas: document.getElementById('hidden-snap-canvas'),
-        
+
         // Fullscreen Live Camera Modal
         modalCamera: document.getElementById('modal-camera'),
         modalWebcamVideo: document.getElementById('modal-webcam-video'),
@@ -76,7 +76,7 @@
         btnCloseCameraModal: document.getElementById('btn-close-camera-modal'),
         btnModalFlipCamera: document.getElementById('btn-modal-flip-camera'),
         modalCameraFlash: document.getElementById('modal-camera-flash'),
-        
+
         // Attendee Details
         btnToggleAttendee: document.getElementById('btn-toggle-attendee'),
         attendeeForm: document.getElementById('attendee-form'),
@@ -166,7 +166,7 @@
                         elements.serverStatusText.textContent = 'Localhost';
                         return;
                     }
-                } catch(le) {}
+                } catch (le) { }
             }
             elements.serverStatusPill.classList.add('offline');
             elements.serverStatusText.textContent = 'Cloud Mode';
@@ -261,6 +261,15 @@
         }
     }
 
+    function getTerminalDeviceId() {
+        let devId = localStorage.getItem('persona_device_id');
+        if (!devId) {
+            devId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
+            localStorage.setItem('persona_device_id', devId);
+        }
+        return devId;
+    }
+
     async function checkClientAuth() {
         const token = state.clientToken;
         if (!token) {
@@ -270,7 +279,10 @@
 
         try {
             const resp = await fetch(`${state.backendUrl}/api/auth/client-verify`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'X-Device-Id': getTerminalDeviceId()
+                }
             });
             const data = await resp.json().catch(() => ({}));
             if (resp.ok && data.success && data.user) {
@@ -293,7 +305,7 @@
                     state.clientUser = u;
                     updateClientPill(u);
                     startClientHeartbeat();
-                } catch(e2) {
+                } catch (e2) {
                     showLoginOverlay();
                 }
             } else {
@@ -318,10 +330,11 @@
 
         try {
             const deviceInfo = `${navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop'} • ${navigator.platform || 'Device'}`;
+            const deviceId = getTerminalDeviceId();
             const resp = await fetch(`${state.backendUrl}/api/auth/client-login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, deviceInfo })
+                body: JSON.stringify({ username, password, deviceInfo, deviceId })
             });
 
             const data = await resp.json().catch(() => ({}));
@@ -370,23 +383,29 @@
             if (!state.clientToken) return;
             try {
                 const resp = await fetch(`${state.backendUrl}/api/auth/client-verify`, {
-                    headers: { 'Authorization': `Bearer ${state.clientToken}` }
+                    headers: { 
+                        'Authorization': `Bearer ${state.clientToken}`,
+                        'X-Device-Id': getTerminalDeviceId()
+                    }
                 });
                 const data = await resp.json().catch(() => ({}));
                 if (!resp.ok || !data.success) {
                     if (data.code === 'SESSION_INVALIDATED') {
                         heartbeatInvalidCount++;
-                        if (heartbeatInvalidCount >= 2) {
+                        // Require 3 consecutive confirmations before terminating
+                        if (heartbeatInvalidCount >= 3) {
                             stopClientHeartbeat();
                             showKickedOutModal();
                         }
+                    } else if (data.code === 'DB_RETRY' || resp.status === 503) {
+                        // DB reconnecting, do not count as session invalidation
                     }
                 } else if (data.user) {
                     heartbeatInvalidCount = 0;
                     state.clientUser = data.user;
                     updateClientPill(data.user);
                 }
-            } catch(e) {
+            } catch (e) {
                 // Heartbeat network skip
             }
         }, 15000);
@@ -407,7 +426,7 @@
             fetch(`${state.backendUrl}/api/auth/client-logout`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
-            }).catch(() => {});
+            }).catch(() => { });
         }
         state.clientToken = null;
         state.clientUser = null;
@@ -534,7 +553,7 @@
 
             state.cameraStream = stream;
             elements.modalWebcamVideo.srcObject = stream;
-            await elements.modalWebcamVideo.play().catch(() => {});
+            await elements.modalWebcamVideo.play().catch(() => { });
 
         } catch (err) {
             console.warn("Camera modal stream notice:", err.message);
@@ -673,7 +692,7 @@
                 canvas.toBlob((blob) => {
                     state.capturedBlob = blob || file;
                     state.capturedDataUrl = canvas.toDataURL('image/jpeg', 0.90);
-                    
+
                     elements.selfiePreviewImg.src = state.capturedDataUrl;
                     elements.selfiePreviewImg.classList.remove('hidden');
                     elements.selfiePlaceholder.classList.add('hidden');
@@ -771,7 +790,7 @@
         templates.forEach((t) => {
             const isSelected = state.selectedTemplateId === t.id;
             const isLive = t.isBanner || t.id === 'inspire_manak' || t.name.includes('Inspire');
-            
+
             // Build full image url
             let imgUrl = t.imageUrl || t.imageData || '';
             if (imgUrl.startsWith('/') || imgUrl.startsWith('uploads/')) {
@@ -806,7 +825,7 @@
     function selectTemplate(templateId, templateName) {
         state.selectedTemplateId = templateId;
         state.selectedTemplateName = templateName;
-        
+
         // Update DOM
         const cards = elements.templatesGrid.querySelectorAll('.template-card');
         cards.forEach(c => {
@@ -830,7 +849,7 @@
 
     function filterTemplates(e) {
         const query = e.target.value.toLowerCase().trim();
-        const filtered = state.backendTemplates.filter(t => 
+        const filtered = state.backendTemplates.filter(t =>
             t.name.toLowerCase().includes(query) || (t.desc && t.desc.toLowerCase().includes(query))
         );
         renderTemplates(filtered);
@@ -899,6 +918,7 @@
             const resp = await fetch(`${state.backendUrl}/api/register`, {
                 method: 'POST',
                 headers: {
+                    'X-Device-Id': getTerminalDeviceId(),
                     ...(state.clientToken ? { 'Authorization': `Bearer ${state.clientToken}` } : {})
                 },
                 body: formData,
@@ -936,7 +956,7 @@
             }
 
             elements.finalResultImg.src = finalSrc;
-            
+
             // Switch UI
             elements.generationLoader.classList.add('hidden');
             elements.resultShowcaseCard.classList.remove('hidden');
@@ -945,14 +965,14 @@
         } catch (err) {
             clearInterval(progressInterval);
             console.error("Generation error:", err);
-            
+
             elements.generationLoader.classList.add('hidden');
             elements.resultErrorCard.classList.remove('hidden');
             elements.btnBack.classList.remove('hidden');
 
             const isTimeout = err.name === 'AbortError' || err.message.includes('timeout') || err.message.includes('aborted');
             elements.errorTitle.textContent = isTimeout ? 'Generation Timeout' : 'Photo Processing Notice';
-            elements.errorMessage.textContent = isTimeout 
+            elements.errorMessage.textContent = isTimeout
                 ? 'Network request timed out. Please check your internet connection or try again.'
                 : (err.message || 'Please retake your selfie or select another template.');
         }
@@ -976,7 +996,7 @@
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.M
             });
-        } catch(e) {
+        } catch (e) {
             elements.qrContainer.innerHTML = `<img src="${state.backendUrl}/api/qr/${state.currentRegId}" width="190" height="190" alt="QR Code">`;
         }
 
