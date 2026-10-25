@@ -2402,18 +2402,24 @@ async function editTemplateById(id) {
             const scaleX = clientW / naturalW;
             const scaleY = clientH / naturalH;
             
-            const circleX = t.circleX || (naturalW / 2);
-            const circleY = t.circleY || (naturalH * 0.4);
-            const circleSize = t.circleSize || (naturalH * 0.3);
+            if (t.targetTop !== undefined && t.targetLeft !== undefined) {
+                tmplState.pxX = Math.round(t.targetLeft * scaleX);
+                tmplState.pxY = Math.round(t.targetTop * scaleY);
+                tmplState.pxSize = Math.max(30, Math.round((t.targetWidth || (t.targetHeight / 2)) * scaleX));
+            } else {
+                const circleX = t.circleX || (naturalW / 2);
+                const circleY = t.circleY || (naturalH * 0.5);
+                const circleSize = t.circleSize || (naturalH * 0.35);
 
-            const personHeight_modal = circleSize * scaleY;
-            tmplState.pxSize = Math.max(30, Math.round(personHeight_modal / 2));
-            
-            const centerX_modal = circleX * scaleX;
-            const centerY_modal = circleY * scaleY;
+                const personHeight_modal = circleSize * scaleY;
+                tmplState.pxSize = Math.max(30, Math.round(personHeight_modal / 2));
+                
+                const centerX_modal = circleX * scaleX;
+                const centerY_modal = circleY * scaleY;
 
-            tmplState.pxX = Math.round(centerX_modal - (tmplState.pxSize / 2));
-            tmplState.pxY = Math.round(centerY_modal - tmplState.pxSize);
+                tmplState.pxX = Math.round(centerX_modal - (tmplState.pxSize / 2));
+                tmplState.pxY = Math.round(centerY_modal - tmplState.pxSize);
+            }
 
             updateMarker(tmplState, tmplMarker);
         };
@@ -2644,16 +2650,26 @@ document.getElementById('templateForm').onsubmit = async (e) => {
         const scaleX = naturalW / clientW;
         const scaleY = naturalH / clientH;
 
-        const centerX_px = (tmplState.pxX !== undefined ? tmplState.pxX : 100) + (tmplState.pxSize || 100) / 2;
-        const centerY_px = (tmplState.pxY !== undefined ? tmplState.pxY : 100) + (tmplState.pxSize || 100);
-        const personHeight_px = (tmplState.pxSize || 100) * 2;
+        const left_px = tmplState.pxX !== undefined ? tmplState.pxX : 80;
+        const top_px = tmplState.pxY !== undefined ? tmplState.pxY : 60;
+        const width_px = tmplState.pxSize || 100;
+        const height_px = (tmplState.pxSize || 100) * 2;
+
+        const centerX_px = left_px + (width_px / 2);
+        const centerY_px = top_px + (height_px / 2);
 
         let circleX = Math.round(centerX_px * scaleX);
         let circleY = Math.round(centerY_px * scaleY);
-        let circleSize = Math.round(personHeight_px * scaleY);
+        let circleSize = Math.round(height_px * scaleY);
+
+        let targetTop = Math.round(top_px * scaleY);
+        let targetBottom = Math.round((top_px + height_px) * scaleY);
+        let targetLeft = Math.round(left_px * scaleX);
+        let targetWidth = Math.round(width_px * scaleX);
+        let targetHeight = Math.round(height_px * scaleY);
 
         if (isNaN(circleX) || !isFinite(circleX)) circleX = Math.round(naturalW / 2);
-        if (isNaN(circleY) || !isFinite(circleY)) circleY = Math.round(naturalH * 0.75);
+        if (isNaN(circleY) || !isFinite(circleY)) circleY = Math.round(naturalH * 0.5);
         if (isNaN(circleSize) || !isFinite(circleSize)) circleSize = Math.round(naturalH * 0.35);
 
         const fd = new FormData();
@@ -2674,6 +2690,11 @@ document.getElementById('templateForm').onsubmit = async (e) => {
         fd.append('circleX', circleX);
         fd.append('circleY', circleY);
         fd.append('circleSize', circleSize);
+        fd.append('targetTop', targetTop);
+        fd.append('targetBottom', targetBottom);
+        fd.append('targetLeft', targetLeft);
+        fd.append('targetWidth', targetWidth);
+        fd.append('targetHeight', targetHeight);
         
         btn.innerText = 'Saving to Database...';
         const url = currentEditTemplateId ? `${API}/api/admin/templates/${currentEditTemplateId}` : `${API}/api/admin/templates`;

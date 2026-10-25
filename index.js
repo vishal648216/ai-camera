@@ -1969,8 +1969,14 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
         const imgW = parseInt(req.body.imgW) || t.imgW || 1080;
         const imgH = parseInt(req.body.imgH) || t.imgH || 1080;
         const circleX = (!isNaN(parseInt(req.body.circleX)) && isFinite(parseInt(req.body.circleX))) ? parseInt(req.body.circleX) : (t.circleX || Math.round(imgW / 2));
-        const circleY = (!isNaN(parseInt(req.body.circleY)) && isFinite(parseInt(req.body.circleY))) ? parseInt(req.body.circleY) : (t.circleY || Math.round(imgH * 0.75));
+        const circleY = (!isNaN(parseInt(req.body.circleY)) && isFinite(parseInt(req.body.circleY))) ? parseInt(req.body.circleY) : (t.circleY || Math.round(imgH * 0.5));
         const circleSize = (!isNaN(parseInt(req.body.circleSize)) && isFinite(parseInt(req.body.circleSize))) ? parseInt(req.body.circleSize) : (t.circleSize || Math.round(imgH * 0.35));
+
+        const targetTop = (!isNaN(parseInt(req.body.targetTop)) && isFinite(parseInt(req.body.targetTop))) ? parseInt(req.body.targetTop) : (t.targetTop !== undefined ? t.targetTop : Math.round(circleY - (circleSize / 2)));
+        const targetBottom = (!isNaN(parseInt(req.body.targetBottom)) && isFinite(parseInt(req.body.targetBottom))) ? parseInt(req.body.targetBottom) : (t.targetBottom !== undefined ? t.targetBottom : Math.round(circleY + (circleSize / 2)));
+        const targetLeft = (!isNaN(parseInt(req.body.targetLeft)) && isFinite(parseInt(req.body.targetLeft))) ? parseInt(req.body.targetLeft) : (t.targetLeft !== undefined ? t.targetLeft : Math.round(circleX - (circleSize / 4)));
+        const targetWidth = (!isNaN(parseInt(req.body.targetWidth)) && isFinite(parseInt(req.body.targetWidth))) ? parseInt(req.body.targetWidth) : (t.targetWidth !== undefined ? t.targetWidth : Math.round(circleSize / 2));
+        const targetHeight = (!isNaN(parseInt(req.body.targetHeight)) && isFinite(parseInt(req.body.targetHeight))) ? parseInt(req.body.targetHeight) : (t.targetHeight !== undefined ? t.targetHeight : circleSize);
 
         let assignedClients = t.assignedClients || [];
         if (req.body.assignedClients !== undefined) {
@@ -2005,6 +2011,11 @@ app.put('/api/admin/templates/:id', upload.single('template'), async (req, res) 
             circleX: circleX,
             circleY: circleY,
             circleSize: circleSize,
+            targetTop: targetTop,
+            targetBottom: targetBottom,
+            targetLeft: targetLeft,
+            targetWidth: targetWidth,
+            targetHeight: targetHeight,
             maskShape: req.body.maskShape || t.maskShape,
             updatedAt: new Date().toISOString()
         };
@@ -2115,8 +2126,14 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
         const imgW = parseInt(req.body.imgW) || 1080;
         const imgH = parseInt(req.body.imgH) || 1080;
         const circleX = (!isNaN(parseInt(req.body.circleX)) && isFinite(parseInt(req.body.circleX))) ? parseInt(req.body.circleX) : Math.round(imgW / 2);
-        const circleY = (!isNaN(parseInt(req.body.circleY)) && isFinite(parseInt(req.body.circleY))) ? parseInt(req.body.circleY) : Math.round(imgH * 0.75);
+        const circleY = (!isNaN(parseInt(req.body.circleY)) && isFinite(parseInt(req.body.circleY))) ? parseInt(req.body.circleY) : Math.round(imgH * 0.5);
         const circleSize = (!isNaN(parseInt(req.body.circleSize)) && isFinite(parseInt(req.body.circleSize))) ? parseInt(req.body.circleSize) : Math.round(imgH * 0.35);
+
+        const targetTop = (!isNaN(parseInt(req.body.targetTop)) && isFinite(parseInt(req.body.targetTop))) ? parseInt(req.body.targetTop) : Math.round(circleY - (circleSize / 2));
+        const targetBottom = (!isNaN(parseInt(req.body.targetBottom)) && isFinite(parseInt(req.body.targetBottom))) ? parseInt(req.body.targetBottom) : Math.round(circleY + (circleSize / 2));
+        const targetLeft = (!isNaN(parseInt(req.body.targetLeft)) && isFinite(parseInt(req.body.targetLeft))) ? parseInt(req.body.targetLeft) : Math.round(circleX - (circleSize / 4));
+        const targetWidth = (!isNaN(parseInt(req.body.targetWidth)) && isFinite(parseInt(req.body.targetWidth))) ? parseInt(req.body.targetWidth) : Math.round(circleSize / 2);
+        const targetHeight = (!isNaN(parseInt(req.body.targetHeight)) && isFinite(parseInt(req.body.targetHeight))) ? parseInt(req.body.targetHeight) : circleSize;
 
         let assignedClients = [];
         if (req.body.assignedClients !== undefined) {
@@ -2151,6 +2168,11 @@ app.post('/api/admin/templates', upload.single('template'), async (req, res) => 
             circleX: circleX,
             circleY: circleY,
             circleSize: circleSize,
+            targetTop: targetTop,
+            targetBottom: targetBottom,
+            targetLeft: targetLeft,
+            targetWidth: targetWidth,
+            targetHeight: targetHeight,
             maskShape: req.body.maskShape || 'circle',
             isActive: true,
             createdAt: new Date().toISOString()
@@ -2575,14 +2597,28 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         const scaleX = mW / origW;
         const scaleY = mH / origH;
 
-        // Raw calibration coordinates
+        // Raw calibration coordinates (statue position & size from admin panel)
         let rawCX = (tmplData && tmplData.circleX != null) ? tmplData.circleX : 540;
-        let rawCY = (tmplData && tmplData.circleY != null) ? tmplData.circleY : 1040;
+        let rawCY = (tmplData && tmplData.circleY != null) ? tmplData.circleY : 540;
         let rawSZ = (tmplData && tmplData.circleSize != null) ? tmplData.circleSize : 780;
 
         let adminCX = Math.round(rawCX * scaleX);
         let adminCY = Math.round(rawCY * scaleY);
         let adminSZ = Math.round(rawSZ * scaleY);
+
+        // Exact calibrated statue bounding box (scaled to current master backdrop canvas)
+        let statueHeight = (tmplData && tmplData.targetHeight != null && tmplData.targetHeight > 30)
+            ? Math.round(tmplData.targetHeight * scaleY)
+            : adminSZ;
+        let statueTop = (tmplData && tmplData.targetTop != null)
+            ? Math.round(tmplData.targetTop * scaleY)
+            : Math.round(adminCY - (statueHeight / 2));
+        let statueBottom = (tmplData && tmplData.targetBottom != null)
+            ? Math.round(tmplData.targetBottom * scaleY)
+            : Math.round(adminCY + (statueHeight / 2));
+        let statueCenterX = (tmplData && tmplData.targetLeft != null && tmplData.targetWidth != null)
+            ? Math.round((tmplData.targetLeft + tmplData.targetWidth / 2) * scaleX)
+            : adminCX;
 
         // 1. Extract subject cutout (STRICTLY USE REAL USER SELFIE CUTOUT — NO HARDCODED SUIT BODY!)
         const rawCutoutBuf = await performBackgroundRemoval(selfiePath);
@@ -2604,13 +2640,13 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         const rawSubH = subMeta.height || 1000;
         const subAspect = rawSubW / rawSubH;
 
-        // 1. Target sizing accurately aligned to admin calibration height
-        let targetH = (adminSZ && adminSZ > 80) ? adminSZ : Math.round(mH * 0.72);
-        targetH = Math.min(targetH, Math.round(mH * 0.95));
+        // 1. Target sizing accurately aligned to calibrated blue statue height
+        let targetH = (statueHeight && statueHeight > 40) ? statueHeight : Math.round(mH * 0.72);
+        targetH = Math.min(targetH, mH);
         let targetW = Math.round(targetH * subAspect);
 
-        if (targetW > Math.round(mW * 0.95)) {
-            targetW = Math.round(mW * 0.95);
+        if (targetW > mW) {
+            targetW = mW;
             targetH = Math.round(targetW / subAspect);
         }
 
@@ -2623,25 +2659,23 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         const subW = actualMeta.width || targetW;
         const subH = actualMeta.height || targetH;
 
-        // 2. Accurate Anchor Placement based on Admin Panel Calibration
-        let left = Math.round(adminCX - (subW / 2));
-        let top = Math.round(adminCY - subH); // adminCY is calibrated ground/feet line
-
-        // For face-swap / portrait circle templates, align head (top 22% of cutout) with circle center
+        // 2. Accurate Anchor Placement matching EXACTLY where the admin placed the blue statue
+        let left = Math.round(statueCenterX - (subW / 2));
+        let top;
         if (tmplData && tmplData.mode === 'face_swap') {
-            top = Math.round(adminCY - (subH * 0.22));
+            top = Math.round(statueTop);
+        } else {
+            // Full-body / backdrop composite:
+            // Feet stand at the feet of the statue (statueBottom)
+            // Head reaches statueTop
+            top = Math.round(statueBottom - subH);
         }
 
         // Clamp inside canvas bounds so subject is never cropped or misplaced
         left = Math.max(0, Math.min(left, mW - subW));
         top = Math.max(0, Math.min(top, mH - subH));
 
-        // When anchor is near the bottom (>= 88% of mH), lock bottom 100% flush against the template bottom edge (ZERO GAP!)
-        if (adminCY >= Math.round(mH * 0.88)) {
-            top = mH - subH;
-        }
-
-        console.log(`[BackdropComposite] Calibrated Placement: anchor(${adminCX}, ${adminCY}, size=${adminSZ}) -> placed at left=${left}, top=${top}, ${subW}x${subH} on canvas ${mW}x${mH} (bottom=${top+subH})`);
+        console.log(`[BackdropComposite] Precise Calibration: statue(CX=${statueCenterX}, top=${statueTop}, bottom=${statueBottom}, H=${statueHeight}) -> placed subject at (left=${left}, top=${top}, ${subW}x${subH}) on canvas ${mW}x${mH}`);
 
         // 3. Studio Rim-Light Backlight Aura (strictly clamped to canvas dimensions)
         const glowW = Math.min(mW, Math.round(subW * 1.06));
