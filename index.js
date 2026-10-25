@@ -253,6 +253,7 @@ async function safeGetClientUserById(id) {
     if (!id) return null;
     const targetId = String(id).trim();
     try {
+        await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
             const conditions = [{ id: targetId }];
             if (mongoose.Types.ObjectId.isValid(targetId) && targetId.length === 24) {
@@ -270,6 +271,7 @@ async function safeGetClientUserByUsername(username) {
     if (!username) return null;
     const uname = String(username).toLowerCase().trim();
     try {
+        await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
             const u = await ClientUser.findOne({ username: uname }).lean();
             if (u) return u;
@@ -282,6 +284,7 @@ async function safeGetClientUserBySessionToken(token) {
     if (!token) return null;
     const tok = String(token).trim();
     try {
+        await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
             const u = await ClientUser.findOne({ activeSessionToken: tok }).lean();
             if (u) return u;
@@ -291,16 +294,18 @@ async function safeGetClientUserBySessionToken(token) {
 }
 
 async function safeSaveClientUser(userData) {
-    if (!userData || !userData.id) return;
+    if (!userData || (!userData.id && !userData.username)) return;
     if (!dbStore.clientUsers) dbStore.clientUsers = [];
-    const idx = dbStore.clientUsers.findIndex(u => u.id === userData.id || u.username === userData.username);
-    if (idx >= 0) dbStore.clientUsers[idx] = userData;
+    const idx = dbStore.clientUsers.findIndex(u => (userData.id && u.id === userData.id) || (userData.username && u.username === userData.username));
+    if (idx >= 0) dbStore.clientUsers[idx] = { ...dbStore.clientUsers[idx], ...userData };
     else dbStore.clientUsers.unshift(userData);
     saveDbStore();
 
     try {
+        await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
-            await ClientUser.updateOne({ id: userData.id }, { $set: userData }, { upsert: true });
+            const query = userData.id ? { id: userData.id } : { username: userData.username };
+            await ClientUser.updateOne(query, { $set: userData }, { upsert: true });
         }
     } catch (e) {}
 }
@@ -1359,6 +1364,7 @@ app.get('/api/admin/leads', async (req, res) => {
 // Client Login: Enforces ONLY ONE active device session
 app.post('/api/auth/client-login', async (req, res) => {
     try {
+        await ensureDBConnected();
         const { username, password } = req.body;
         if (!username || !password) {
             return res.status(400).json({ success: false, error: 'Username and password are required' });
@@ -1413,6 +1419,7 @@ app.post('/api/auth/client-login', async (req, res) => {
 // Client Verify / Heartbeat: Check if this session is still the single active device
 app.get('/api/auth/client-verify', async (req, res) => {
     try {
+        await ensureDBConnected();
         const authHeader = req.headers.authorization;
         const token = (authHeader && authHeader.startsWith('Bearer '))
             ? authHeader.substring(7).trim()
@@ -1424,7 +1431,15 @@ app.get('/api/auth/client-verify', async (req, res) => {
 
         const user = await safeGetClientUserBySessionToken(token);
         if (!user) {
-            // Session was replaced by a newer login from another device or was kicked out by admin!
+            // Guard: If MongoDB is not ready or reconnecting on serverless cold start, do NOT falsely invalidate session!
+            if (mongoose.connection.readyState !== 1) {
+                return res.status(503).json({
+                    success: false,
+                    code: 'DB_RETRY',
+                    error: 'Database reconnecting, please retry.'
+                });
+            }
+            // Genuine session invalidation: user was logged in on another device or kicked by admin
             return res.status(401).json({
                 success: false,
                 code: 'SESSION_INVALIDATED',
@@ -1440,9 +1455,9 @@ app.get('/api/auth/client-verify', async (req, res) => {
             });
         }
 
-        // Update last active time
+        // Update last active time in background (non-blocking)
         user.lastActiveAt = new Date().toISOString();
-        await safeSaveClientUser(user);
+        safeSaveClientUser(user).catch(() => {});
 
         let eventName = user.eventName || 'General Event';
         if (user.eventId && user.eventId !== 'default') {
@@ -1464,7 +1479,8 @@ app.get('/api/auth/client-verify', async (req, res) => {
             }
         });
     } catch(e) {
-        res.status(500).json({ success: false, error: e.message });
+        console.error("Client verify error:", e.message);
+        res.status(500).json({ success: false, code: 'SERVER_ERROR', error: e.message });
     }
 });
 
@@ -2854,24 +2870,30 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
 
     let clientUser = null;
     if (clientToken) {
+        await ensureDBConnected();
         clientUser = await safeGetClientUserBySessionToken(clientToken);
         if (!clientUser) {
-            console.warn(`[Register] Blocked generation attempt with invalid or expired session token: ${clientToken}`);
-            return res.status(401).json({ 
-                success: false, 
-                code: 'SESSION_INVALIDATED', 
-                message: 'Aapka account kisi dusre device par login ho chuka hai. Is device se logout kiya ja raha hai.' 
-            });
-        }
-        if (clientUser.status !== 'active') {
+            // Only kick out if MongoDB is ready and genuinely rejected the token
+            if (mongoose.connection.readyState === 1) {
+                console.warn(`[Register] Blocked generation attempt with invalid or expired session token: ${clientToken}`);
+                return res.status(401).json({ 
+                    success: false, 
+                    code: 'SESSION_INVALIDATED', 
+                    message: 'Aapka account kisi dusre device par login ho chuka hai. Is device se logout kiya ja raha hai.' 
+                });
+            } else {
+                console.warn(`[Register] MongoDB reconnecting during token verify, proceeding with registration...`);
+            }
+        } else if (clientUser.status !== 'active') {
             return res.status(403).json({ 
                 success: false, 
                 code: 'ACCOUNT_DISABLED', 
                 message: 'Yeh rental account disabled hai. Please Admin se contact karein.' 
             });
+        } else {
+            clientUser.lastActiveAt = new Date().toISOString();
+            safeSaveClientUser(clientUser).catch(() => {});
         }
-        clientUser.lastActiveAt = new Date().toISOString();
-        await safeSaveClientUser(clientUser);
     }
 
     const regId = uuidv4();

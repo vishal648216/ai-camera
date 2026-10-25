@@ -278,6 +278,8 @@
             } else {
                 if (data.code === 'SESSION_INVALIDATED') {
                     showKickedOutModal();
+                } else if (data.code === 'DB_RETRY' || resp.status === 503) {
+                    setTimeout(checkClientAuth, 1500);
                 } else {
                     showLoginOverlay();
                 }
@@ -359,8 +361,10 @@
         }
     }
 
+    let heartbeatInvalidCount = 0;
     function startClientHeartbeat() {
         if (state.heartbeatTimer) clearInterval(state.heartbeatTimer);
+        heartbeatInvalidCount = 0;
         // Verify active device session every 15s
         state.heartbeatTimer = setInterval(async () => {
             if (!state.clientToken) return;
@@ -371,10 +375,14 @@
                 const data = await resp.json().catch(() => ({}));
                 if (!resp.ok || !data.success) {
                     if (data.code === 'SESSION_INVALIDATED') {
-                        stopClientHeartbeat();
-                        showKickedOutModal();
+                        heartbeatInvalidCount++;
+                        if (heartbeatInvalidCount >= 2) {
+                            stopClientHeartbeat();
+                            showKickedOutModal();
+                        }
                     }
                 } else if (data.user) {
+                    heartbeatInvalidCount = 0;
                     state.clientUser = data.user;
                     updateClientPill(data.user);
                 }
