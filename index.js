@@ -470,14 +470,21 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
         await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
             const filter = all ? {} : { isActive: { $ne: false } };
-            // CRITICAL: Exclude all bloated Base64 fields so query takes 100ms instead of 42 seconds!
+            // When not including Base64: exclude bloated fields so query is fast (100ms vs 42s)
+            // When includeBase64=true: fetch everything (used for image generation only)
             const projection = includeBase64 ? {} : { imageData: 0, master_image: 0, imageUrl: 0, rawImage: 0 };
             const temps = await Template.find(filter, projection).sort({ _id: -1 }).lean();
             if (temps && temps.length > 0) {
                 for (const rawT of temps) {
                     const tid = rawT.id || (rawT._id ? rawT._id.toString() : '');
                     if (tid) {
-                        if (rawT.imageUrl && rawT.imageUrl.startsWith('data:image')) {
+                        // If NOT including base64, replace data URIs with disk path
+                        // If INCLUDING base64, keep data URI as imageData for compositing
+                        if (!includeBase64 && rawT.imageUrl && rawT.imageUrl.startsWith('data:image')) {
+                            rawT.imageUrl = `/uploads/templates/${tid}.png`;
+                        } else if (includeBase64 && rawT.imageUrl && rawT.imageUrl.startsWith('data:image')) {
+                            // Preserve the base64 as imageData
+                            if (!rawT.imageData) rawT.imageData = rawT.imageUrl;
                             rawT.imageUrl = `/uploads/templates/${tid}.png`;
                         }
                         const existing = tempMap.get(tid) || {};
@@ -489,6 +496,7 @@ async function safeGetTemplates(all = true, includeBase64 = false) {
     } catch (e) {
         console.error("MongoDB safeGetTemplates error:", e.message);
     }
+
 
     let list = Array.from(tempMap.values());
     if (!all) {
@@ -2474,27 +2482,40 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
         } catch(e) {}
 
         // Query template data from MongoDB Atlas / store / config (BY ID OR BY NAME!)
+        // CRITICAL: includeBase64=true because we NEED the actual image for compositing!
         let tmplData = null;
         try {
-            const allTemps = await safeGetTemplates(true);
-            if (allTemps && allTemps.length > 0) {
-                tmplData = allTemps.find(t => 
-                    t.id === templateId || 
-                    (t.id && t.id.toLowerCase() === templateId.toLowerCase()) ||
-                    (t.name && t.name.toLowerCase() === templateId.toLowerCase())
-                );
+            // First try direct MongoDB fetch with full image data included
+            if (mongoose.connection.readyState === 1) {
+                const conditions = [{ id: templateId }];
+                const directResult = await mongoose.connection.collection('templates').findOne({ id: templateId });
+                if (directResult) {
+                    tmplData = directResult;
+                    console.log(`[BackdropComposite] Got template from MongoDB direct fetch: ${tmplData.name || templateId}`);
+                }
             }
-        } catch(e) {}
+        } catch(e) { console.warn('[BackdropComposite] Direct MongoDB fetch warn:', e.message); }
 
-        // Fallback to template_config.json if not found in db store
+        // Fallback to safeGetTemplates with includeBase64=true
         if (!tmplData) {
             try {
-                const cfgPath = path.join(__dirname, 'template_config.json');
-                if (fs.existsSync(cfgPath)) {
-                    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-                    if (cfg && cfg.templates) {
-                        tmplData = cfg.templates.find(t => t.id === templateId || (t.name && t.name.toLowerCase() === templateId.toLowerCase()));
-                    }
+                const allTemps = await safeGetTemplates(true, true); // includeBase64=true!
+                if (allTemps && allTemps.length > 0) {
+                    tmplData = allTemps.find(t => 
+                        t.id === templateId || 
+                        (t.id && t.id.toLowerCase() === templateId.toLowerCase()) ||
+                        (t.name && t.name.toLowerCase() === templateId.toLowerCase())
+                    );
+                }
+            } catch(e) {}
+        }
+
+        // Last resort: check in-memory template config cache (metadata only, no base64)
+        if (!tmplData) {
+            try {
+                const cfg = getTemplateConfigCache();
+                if (cfg && cfg.templates) {
+                    tmplData = cfg.templates.find(t => t.id === templateId || (t.name && t.name.toLowerCase() === templateId.toLowerCase()));
                 }
             } catch(e) {}
         }
@@ -2504,45 +2525,33 @@ async function processBackdropComposite({ selfiePath, masterTemplatePath, output
             try { masterBuffer = fs.readFileSync(masterTemplatePath); } catch(e) {}
         }
 
-        // 2. Try tmplData Base64 or image URL
+        // 2. Try tmplData Base64 or image URL (tmplData now has full imageData from MongoDB)
         if (!masterBuffer && tmplData) {
-            const uri = tmplData.imageData || tmplData.imageUrl || tmplData.master_image;
+            const uri = tmplData.imageData || tmplData.master_image || 
+                        (tmplData.imageUrl && tmplData.imageUrl.startsWith('data:image') ? tmplData.imageUrl : null);
             if (uri && uri.startsWith('data:image')) {
                 try {
                     const base64Str = uri.split(',')[1];
                     masterBuffer = Buffer.from(base64Str, 'base64');
-                    console.log(`[BackdropComposite] Successfully loaded template image from tmplData Base64 (${tmplData.name})`);
+                    // Also write to disk for future use
+                    if (masterTemplatePath) {
+                        try { fs.writeFileSync(masterTemplatePath, masterBuffer); } catch(we) {}
+                    }
+                    console.log(`[BackdropComposite] Loaded template image from MongoDB Base64 (${tmplData.name || templateId})`);
                 } catch(e) {}
-            } else if (uri && (uri.startsWith('/uploads') || uri.startsWith('uploads'))) {
-                const relPath = uri.startsWith('/') ? uri.substring(1) : uri;
+            } else if (tmplData.imageUrl && (tmplData.imageUrl.startsWith('/uploads') || tmplData.imageUrl.startsWith('uploads'))) {
+                const relPath = tmplData.imageUrl.startsWith('/') ? tmplData.imageUrl.substring(1) : tmplData.imageUrl;
                 const localPath = path.join(__dirname, relPath);
                 if (fs.existsSync(localPath)) masterBuffer = fs.readFileSync(localPath);
             }
         }
 
-        // 3. Try template_config.json directly for Base64 master image
+        // 3. Try tmp disk locations for this template
         if (!masterBuffer) {
-            try {
-                const cfgPath = path.join(__dirname, 'template_config.json');
-                if (fs.existsSync(cfgPath)) {
-                    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-                    if (cfg && cfg.templates && Array.isArray(cfg.templates)) {
-                        const matched = cfg.templates.find(t => 
-                            t.id === templateId || 
-                            (t.id && t.id.toLowerCase() === templateId.toLowerCase()) ||
-                            (t.name && t.name.toLowerCase() === templateId.toLowerCase())
-                        ) || cfg.templates[0];
-                        if (matched) {
-                            if (!tmplData) tmplData = matched;
-                            const uri = matched.imageData || matched.imageUrl || matched.master_image;
-                            if (uri && uri.startsWith('data:image')) {
-                                masterBuffer = Buffer.from(uri.split(',')[1], 'base64');
-                                console.log(`[BackdropComposite] Successfully loaded template Base64 from template_config.json (${matched.name})`);
-                            }
-                        }
-                    }
-                }
-            } catch(e) {}
+            const tmpTemplatePath = path.join(os.tmpdir(), 'uploads', 'templates', `${templateId}.png`);
+            if (fs.existsSync(tmpTemplatePath) && fs.statSync(tmpTemplatePath).size > 1000) {
+                try { masterBuffer = fs.readFileSync(tmpTemplatePath); } catch(e) {}
+            }
         }
 
         // 4. Clean Master Backdrop Fallback
