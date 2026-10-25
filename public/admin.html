@@ -2495,14 +2495,36 @@ async function toggleTemplate(id) {
 }
 async function deleteTemplate(id) {
     if (confirm('Are you sure you want to delete this template? This cannot be undone.')) {
-        await fetch(`${API}/api/admin/templates/${id}`, { method: 'DELETE' });
-        await fetchTemplates();
+        const card = document.getElementById(`tmpl-card-${id}`);
+        if (card) card.style.opacity = '0.3';
+        try {
+            const res = await fetch(`${API}/api/admin/templates/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                if (card) card.remove();
+                await fetchTemplates();
+            } else {
+                if (card) card.style.opacity = '1';
+                alert('Failed to delete template from database: ' + res.statusText);
+            }
+        } catch(e) {
+            if (card) card.style.opacity = '1';
+            alert('Error deleting template: ' + e.message);
+        }
     }
 }
 async function deleteAllTemplates() {
     if (confirm('Are you sure you want to delete ALL templates from MongoDB Atlas? This will clear all templates.')) {
-        await fetch(`${API}/api/admin/templates-all`, { method: 'DELETE' });
-        await fetchTemplates();
+        try {
+            const res = await fetch(`${API}/api/admin/templates-all`, { method: 'DELETE' });
+            if (res.ok) {
+                document.getElementById('templateGrid').innerHTML = '<div class="col-12 text-center text-secondary py-4">No templates found. Click "Upload Template" to add one.</div>';
+                await fetchTemplates();
+            } else {
+                alert('Failed to clear all templates: ' + res.statusText);
+            }
+        } catch(e) {
+            alert('Error clearing templates: ' + e.message);
+        }
     }
 }
 

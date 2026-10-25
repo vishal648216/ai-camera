@@ -841,25 +841,48 @@ async function safeDeleteRegistrationsByEvent(eventId) {
 }
 
 async function safeDeleteTemplate(id) {
-    if (dbStore.templates) dbStore.templates = dbStore.templates.filter(t => t.id !== id);
-    saveDbStore();
-    deleteFromTemplateConfig(id);
+    if (!id) return;
+    invalidateTemplateCache();
+    const targetId = String(id).trim();
+
+    if (dbStore.templates) {
+        dbStore.templates = dbStore.templates.filter(t => String(t.id) !== targetId && String(t._id) !== targetId);
+        saveDbStore();
+    }
+    deleteFromTemplateConfig(targetId);
+
     try {
+        await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
-            await Template.deleteMany({ $or: [{ id: id }, { _id: id }] });
+            const conditions = [{ id: targetId }];
+            if (mongoose.Types.ObjectId.isValid(targetId) && targetId.length === 24) {
+                conditions.push({ _id: new mongoose.Types.ObjectId(targetId) });
+            }
+            // Use native collection to prevent Mongoose schema CastError on UUIDs!
+            await mongoose.connection.collection('templates').deleteMany({
+                $or: conditions
+            });
+            console.log(`[Templates] Successfully deleted template ${targetId} from MongoDB Atlas`);
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("MongoDB safeDeleteTemplate error:", e.message);
+    }
 }
 
 async function safeDeleteAllTemplates() {
+    invalidateTemplateCache();
     dbStore.templates = [];
     saveDbStore();
     clearTemplateConfig();
     try {
+        await ensureDBConnected();
         if (mongoose.connection.readyState === 1) {
-            await Template.deleteMany({});
+            await mongoose.connection.collection('templates').deleteMany({});
+            console.log("[Templates] Successfully deleted all templates from MongoDB Atlas");
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("MongoDB safeDeleteAllTemplates error:", e.message);
+    }
 }
 
 let dbConnPromise = null;
