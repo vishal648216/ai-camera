@@ -283,9 +283,9 @@
             </div>
             <div class="col-md-3">
                 <div class="glass-card stat-card" style="border-left-color: var(--green);">
-                    <small class="text-secondary fw-bold">ACTIVE LIVE BOOTHS</small>
+                    <small class="text-secondary fw-bold">ACTIVE ACCOUNTS & TERMINALS</small>
                     <div id="statActiveBooths" class="stat-val text-success">0</div>
-                    <small class="text-secondary">Logged in right now (single device)</small>
+                    <small id="statActiveBoothsSub" class="text-secondary">Active accounts / Live booths</small>
                 </div>
             </div>
             <div class="col-md-3">
@@ -322,7 +322,8 @@
                             <th class="ps-3">Client / Booth Details</th>
                             <th>Username</th>
                             <th>Password</th>
-                            <th>Terminal Status</th>
+                            <th>Account Status</th>
+                            <th>Live Terminal</th>
                             <th>Assigned Templates</th>
                             <th class="text-center">Photos Done</th>
                             <th>Rate</th>
@@ -1345,14 +1346,17 @@ async function fetchClients() {
         const totalClientsEl = document.getElementById('statTotalClients');
         if (totalClientsEl) totalClientsEl.innerText = _allClients.length;
 
+        const activeCount = _allClients.filter(c => c.status !== 'disabled').length;
         const onlineCount = _allClients.filter(c => c.isOnline).length;
         const activeBoothsEl = document.getElementById('statActiveBooths');
-        if (activeBoothsEl) activeBoothsEl.innerText = onlineCount;
+        if (activeBoothsEl) activeBoothsEl.innerHTML = `${activeCount} <small class="fs-6 text-info fw-normal">(${onlineCount} Live)</small>`;
+        const activeBoothsSubEl = document.getElementById('statActiveBoothsSub');
+        if (activeBoothsSubEl) activeBoothsSubEl.innerText = `${activeCount} active client accounts • ${onlineCount} live booth online`;
 
         const sidebarBadge = document.getElementById('sidebarOnlineBadge');
         if (sidebarBadge) {
-            sidebarBadge.innerText = onlineCount;
-            sidebarBadge.classList.toggle('d-none', onlineCount === 0);
+            sidebarBadge.innerText = `${activeCount} Active`;
+            sidebarBadge.classList.toggle('d-none', activeCount === 0);
         }
 
         const totalPhotos = _allClients.reduce((acc, c) => acc + (c.photoCount || c.generatedCount || 0), 0);
@@ -1377,7 +1381,7 @@ function renderClientsTable() {
     if (!tbody) return;
 
     if (!_allClients.length) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-secondary py-5">
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-secondary py-5">
             <i class="fas fa-users-slash fa-3x mb-3 text-secondary opacity-50"></i>
             <h5 class="text-white">No Rental Client Accounts Yet</h5>
             <p class="small text-secondary mb-3">Create your first client account and give credentials to your booth renter.</p>
@@ -1388,13 +1392,19 @@ function renderClientsTable() {
 
     tbody.innerHTML = _allClients.map(c => {
         const isOnline = c.isOnline;
-        const statusBadge = isOnline 
-            ? `<span class="badge bg-success"><i class="fas fa-circle text-white me-1 pulse" style="font-size:8px;"></i>Online</span><br><small class="text-secondary text-truncate d-block" style="max-width:130px;" title="${escapeHtml(c.deviceInfo || 'Connected Device')}">${escapeHtml(c.deviceInfo || 'Active Terminal')}</small>`
-            : `<span class="badge bg-secondary bg-opacity-50 text-secondary border border-secondary border-opacity-25">Offline</span>`;
+        const isActive = c.status !== 'disabled';
 
-        const statusAccount = c.status === 'disabled'
-            ? `<span class="badge bg-danger ms-1">Disabled</span>`
-            : '';
+        const accountStatusBadge = isActive
+            ? `<button type="button" class="btn btn-sm btn-outline-success px-2 py-1 fw-bold shadow-sm" onclick="toggleClientStatus('${c.id}', '${c.status}')" title="Account is Active! Click to Disable.">
+                <i class="fas fa-check-circle me-1 text-success"></i>Active
+               </button>`
+            : `<button type="button" class="btn btn-sm btn-outline-danger px-2 py-1 fw-bold shadow-sm" onclick="toggleClientStatus('${c.id}', '${c.status}')" title="Account is Disabled! Click to Activate.">
+                <i class="fas fa-ban me-1 text-danger"></i>Disabled
+               </button>`;
+
+        const liveTerminalBadge = isOnline 
+            ? `<span class="badge bg-success px-2 py-1"><i class="fas fa-circle text-white me-1 pulse" style="font-size:8px;"></i>Live Online</span><br><small class="text-secondary text-truncate d-block" style="max-width:130px;" title="${escapeHtml(c.deviceInfo || 'Connected Device')}">${escapeHtml(c.deviceInfo || 'Active Terminal')}</small>`
+            : `<span class="badge bg-secondary bg-opacity-25 text-secondary border border-secondary border-opacity-25 px-2 py-1" title="Terminal is ready. When user logs in on booth app, it turns green Live Online."><i class="fas fa-power-off me-1"></i>Standby (Ready)</span>`;
 
         const photosCount = (c.photoCount !== undefined ? c.photoCount : (c.generatedCount || 0));
         const rate = (c.pricePerPhoto !== undefined ? c.pricePerPhoto : (c.ratePerPhoto !== undefined ? c.ratePerPhoto : 0.80)).toFixed(2);
@@ -1404,7 +1414,7 @@ function renderClientsTable() {
         return `
         <tr>
             <td class="ps-3">
-                <div class="fw-bold text-white fs-6">${escapeHtml(c.name || 'Unnamed Client')} ${statusAccount}</div>
+                <div class="fw-bold text-white fs-6">${escapeHtml(c.name || 'Unnamed Client')}</div>
                 <small class="text-info"><i class="fas fa-tag me-1"></i>${escapeHtml(c.eventName || 'Default Booth')}</small>
                 ${c.phone ? `<br><small class="text-secondary"><i class="fas fa-phone me-1"></i>${escapeHtml(c.phone)}</small>` : ''}
             </td>
@@ -1424,7 +1434,8 @@ function renderClientsTable() {
                     </button>
                 </div>
             </td>
-            <td>${statusBadge}</td>
+            <td>${accountStatusBadge}</td>
+            <td>${liveTerminalBadge}</td>
             <td>
                 ${assignedCount > 0 
                     ? `<button type="button" class="btn btn-sm btn-outline-info px-2 py-1 fw-bold" onclick="openAssignTemplatesModal('${c.id}')" title="Click to edit template assignment for this client">
@@ -1444,6 +1455,9 @@ function renderClientsTable() {
             <td><span class="text-success fw-bold fs-6">₹${bill}</span></td>
             <td class="text-end pe-3">
                 <div class="btn-group btn-group-sm">
+                    <a href="/app" target="_blank" class="btn btn-outline-success" title="Launch Photobooth Terminal for this client">
+                        <i class="fas fa-external-link-alt"></i>
+                    </a>
                     <button class="btn btn-outline-info" onclick="openAssignTemplatesModal('${c.id}')" title="Assign Templates to ${escapeHtml(c.name || c.username)}">
                         <i class="fas fa-layer-group"></i>
                     </button>
@@ -1998,6 +2012,25 @@ async function kickoutClientSession(id, name) {
         alert('Kickout failed: ' + err.message);
     }
 }
+
+async function toggleClientStatus(id, currentStatus) {
+    const newStatus = (currentStatus === 'active') ? 'disabled' : 'active';
+    try {
+        const res = await fetch(`${API}/api/admin/clients/${id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || 'Failed to update status');
+        }
+        await fetchClients();
+    } catch (err) {
+        alert('Status update failed: ' + err.message);
+    }
+}
+window.toggleClientStatus = toggleClientStatus;
 
 async function openClientInvoiceModal(id) {
     try {

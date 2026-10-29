@@ -57,7 +57,7 @@ app.get('/', (req, res) => {
     if (acceptsHtml) {
         return res.redirect('/app/');
     }
-    res.json({ status: "online", app: "Apni Company AI Photo Booth API", timestamp: new Date().toISOString() });
+    res.json({ status: "online", app: "Aapki Company AI Photo Booth API", timestamp: new Date().toISOString() });
 });
 
 app.get('/api/results/:id', async (req, res) => {
@@ -1628,6 +1628,20 @@ app.put('/api/admin/clients/:id', async (req, res) => {
 
         await safeSaveClientUser(user);
         res.json({ success: true, client: user });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Quick Toggle Client Status (Active <-> Disabled)
+app.patch('/api/admin/clients/:id/status', async (req, res) => {
+    try {
+        const user = await safeGetClientUserById(req.params.id);
+        if (!user) return res.status(404).json({ success: false, error: 'Client not found' });
+        user.status = req.body.status || (user.status === 'active' ? 'disabled' : 'active');
+        await safeSaveClientUser(user);
+        console.log(`[Admin] Toggled client ${user.username} status to '${user.status}'`);
+        res.json({ success: true, status: user.status, client: user });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
