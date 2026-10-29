@@ -680,7 +680,7 @@
                                 <select id="tmplAssignedClient" class="form-select bg-dark border-secondary text-white">
                                     <option value="all">🌐 All Clients (Public Template)</option>
                                 </select>
-                                <small class="text-secondary" style="font-size:11px;">Select karein agar ye template sirf kisi specific user (jaise mayur) ki profile me dikhana ho.</small>
+                                <small class="text-secondary" style="font-size:11px;">Select if this template should only be visible to a specific user (e.g. mayur).</small>
                             </div>
                             <div class="mb-3"><label class="small mb-1">Template Image</label><input type="file" id="tmplFile" class="form-control bg-dark border-0 text-white" accept="image/*" onchange="handleTemplateFile(this)"></div>
                             <div class="alert alert-info p-2 small mt-3">
@@ -819,7 +819,7 @@
                 <input type="hidden" id="editClientId" value="">
                 <div class="modal-body p-4">
                     <div class="alert alert-info py-2 px-3 small border-0 bg-info bg-opacity-10 text-info mb-3">
-                        <i class="fas fa-shield-alt me-1"></i> <b>Single Active Device Policy:</b> Yeh credentials client ko do. Agar client 2 alag devices pe login karega toh pehle device se automatic logout ho jayega.
+                        <i class="fas fa-shield-alt me-1"></i> <b>Single Active Device Policy:</b> Provide these credentials to the client. Logging in from a second device will automatically log out the previous device.
                     </div>
 
                     <div class="row g-3">
@@ -943,7 +943,7 @@
                 </table>
 
                 <div class="p-3 bg-light rounded text-muted small">
-                    <i class="fas fa-info-circle me-1"></i> <b>Billing Notice:</b> Har photo generate hone par backend database me client account ke saath count hota hai. Payment is calculated based on exact photo captures.
+                    <i class="fas fa-info-circle me-1"></i> <b>Billing Notice:</b> Every photo generation is recorded under the client account in the database. Billing is calculated based on total photo generations.
                 </div>
             </div>
             <div class="modal-footer bg-light p-3 d-flex justify-content-between">
@@ -984,7 +984,7 @@
                 </div>
 
                 <div class="alert alert-info py-2 px-3 small border-0 bg-info bg-opacity-10 text-info mb-3">
-                    <i class="fas fa-info-circle me-1"></i> Jinko aap check/select karoge, <b>sirf vahi templates</b> is client ko app me dikhenge. Save karne par instantly client terminal update ho jayega.
+                    <i class="fas fa-info-circle me-1"></i> Only selected templates will be visible to this client in the booth app. Saving updates the client terminal immediately.
                 </div>
 
                 <!-- Template Cards Grid -->
@@ -1029,7 +1029,7 @@
                     </select>
                 </div>
                 <div class="alert alert-info py-2 px-3 small border-0 bg-info bg-opacity-10 text-info mb-0">
-                    <i class="fas fa-info-circle me-1"></i> Agar aap kisi user (jaise <b>mayur</b>) ko select karenge, toh yeh template <b>sirf us user ke account</b> me hi show hoga.
+                    <i class="fas fa-info-circle me-1"></i> If a specific user is selected, this template will <b>only be visible</b> in that user's booth app.
                 </div>
             </div>
             <div class="modal-footer border-top border-secondary border-opacity-25 p-3 d-flex justify-content-between">

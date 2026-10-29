@@ -2893,7 +2893,7 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
                 return res.status(401).json({
                     success: false,
                     code: 'SESSION_INVALIDATED',
-                    message: 'Aapka account kisi dusre device par login ho chuka hai. Is device se logout kiya ja raha hai.'
+                    message: 'This account is currently active on another device. You have been logged out from this terminal.'
                 });
             } else {
                 console.warn(`[Register] MongoDB reconnecting during token verify, proceeding with registration...`);
@@ -2902,7 +2902,7 @@ app.post('/api/register', upload.single('selfie'), async (req, res) => {
             return res.status(403).json({
                 success: false,
                 code: 'ACCOUNT_DISABLED',
-                message: 'Yeh rental account disabled hai. Please Admin se contact karein.'
+                message: 'This rental account is currently disabled. Please contact the administrator.'
             });
         } else {
             clientUser.lastActiveAt = new Date().toISOString();
