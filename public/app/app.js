@@ -633,6 +633,9 @@
                 const tryPlay = async () => {
                     try {
                         await video.play();
+                        // Hide hint once video frames start flowing
+                        const hint = document.getElementById('camera-shutter-hint');
+                        if (hint) hint.classList.add('hidden');
                     } catch (pe) {
                         console.warn("[Camera] Play notice:", pe.message);
                     }
@@ -640,6 +643,10 @@
 
                 video.onloadedmetadata = tryPlay;
                 video.oncanplay = tryPlay;
+                video.onplaying = () => {
+                    const hint = document.getElementById('camera-shutter-hint');
+                    if (hint) hint.classList.add('hidden');
+                };
                 tryPlay();
             }
 
