@@ -250,7 +250,15 @@
         }
 
         if (elements.btnClientLogout) {
-            elements.btnClientLogout.addEventListener('click', handleClientLogout);
+            elements.btnClientLogout.addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleClientLogout();
+            });
+        }
+
+        if (elements.clientInfoPill) {
+            elements.clientInfoPill.style.cursor = 'pointer';
+            elements.clientInfoPill.addEventListener('click', handleClientLogout);
         }
 
         if (elements.btnReloginHere) {
@@ -368,9 +376,10 @@
     function updateClientPill(user) {
         if (!elements.clientInfoPill) return;
         elements.clientInfoPill.classList.remove('hidden');
+        if (elements.btnClientLogout) elements.btnClientLogout.classList.remove('hidden');
         if (elements.clientNameDisplay) {
             elements.clientNameDisplay.textContent = user.name || user.username || 'Booth';
-            elements.clientInfoPill.title = `Terminal: ${user.username} (${user.eventName || 'Default Event'})`;
+            elements.clientInfoPill.title = `Terminal: ${user.username} (${user.eventName || 'Default Event'}) - Click to Logout`;
         }
     }
 
@@ -433,6 +442,7 @@
         localStorage.removeItem('persona_client_token');
         localStorage.removeItem('persona_client_user');
         if (elements.clientInfoPill) elements.clientInfoPill.classList.add('hidden');
+        if (elements.btnClientLogout) elements.btnClientLogout.classList.add('hidden');
         showLoginOverlay();
         loadTemplates(true);
     }
@@ -443,6 +453,7 @@
         localStorage.removeItem('persona_client_token');
         stopCameraStream();
         if (elements.clientInfoPill) elements.clientInfoPill.classList.add('hidden');
+        if (elements.btnClientLogout) elements.btnClientLogout.classList.add('hidden');
         if (elements.clientLoginOverlay) elements.clientLoginOverlay.classList.add('hidden');
         if (elements.modalKickedOut) elements.modalKickedOut.classList.remove('hidden');
     }

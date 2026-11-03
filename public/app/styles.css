@@ -1430,22 +1430,32 @@ body {
     color: #FFFFFF;
 }
 
-.btn-logout-mini {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.6);
-    cursor: pointer;
+.btn-logout-action {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 2px;
-    border-radius: 4px;
-    transition: color 0.2s, transform 0.1s;
+    gap: 4px;
+    background: rgba(239, 68, 68, 0.16);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #ff6b6b;
+    border-radius: var(--radius-pill);
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
-.btn-logout-mini:hover {
-    color: var(--accent-red);
-    transform: scale(1.15);
+.btn-logout-action:hover {
+    background: rgba(239, 68, 68, 0.32);
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+    transform: scale(1.04);
+}
+
+.btn-logout-action:active {
+    transform: scale(0.96);
 }
 
 /* Client Login Fullscreen Overlay */
