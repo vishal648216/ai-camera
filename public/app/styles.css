@@ -1182,6 +1182,26 @@ body {
     transform: scaleX(-1); /* Mirror selfie for intuitive feel */
 }
 
+.camera-shutter-hint {
+    position: absolute;
+    top: 66px;
+    left: 14px;
+    right: 14px;
+    background: rgba(18, 16, 32, 0.9);
+    border: 1px solid rgba(255, 193, 7, 0.45);
+    color: #ffc107;
+    border-radius: 10px;
+    padding: 7px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 15;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+}
+
 
 .camera-modal-footer {
     position: absolute;

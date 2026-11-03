@@ -574,32 +574,24 @@
             // 1. If user switched to a specific deviceId
             if (availableVideoDevices[currentDeviceIndex] && availableVideoDevices[currentDeviceIndex].deviceId) {
                 constraintsList.push({
-                    deviceId: { exact: availableVideoDevices[currentDeviceIndex].deviceId },
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
+                    deviceId: { exact: availableVideoDevices[currentDeviceIndex].deviceId }
                 });
             }
 
-            // 2. FacingMode ideal
-            constraintsList.push({
-                facingMode: state.cameraFacingMode ? { ideal: state.cameraFacingMode } : 'user',
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            });
-
-            // 3. FacingMode direct
-            constraintsList.push({
-                facingMode: state.cameraFacingMode || 'user'
-            });
-
-            // 4. Basic resolution (safest for Windows/Mac webcams)
-            constraintsList.push({
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            });
-
-            // 5. Ultimate fallback
+            // 2. Native hardware video stream (lets camera use native 640x480 without upscale failure)
             constraintsList.push(true);
+
+            // 3. Standard 640x480 VGA (exact hardware match for VGA UVC webcams)
+            constraintsList.push({
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            });
+
+            // 4. Higher resolutions if supported
+            constraintsList.push({
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            });
 
             for (const vOpt of constraintsList) {
                 try {
