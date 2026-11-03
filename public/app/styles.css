@@ -249,13 +249,25 @@ body {
     gap: 5px;
     background: rgba(16, 185, 129, 0.12);
     border: 1px solid rgba(16, 185, 129, 0.35);
-    padding: 4px 8px;
+    padding: 3px 6px;
     border-radius: var(--radius-pill);
     font-size: 10px;
     font-weight: 600;
     color: var(--accent-green);
     white-space: nowrap;
     flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+    #server-status-text {
+        display: none;
+    }
+    .header-status {
+        padding: 5px;
+    }
+    .header-text {
+        font-size: 13px;
+    }
 }
 
 .header-status.offline {
