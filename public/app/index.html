@@ -325,8 +325,11 @@
                         <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                 </button>
-                <span class="camera-modal-title">Live Camera</span>
-                <button type="button" id="btn-modal-flip-camera" class="camera-icon-btn" title="Flip Camera">
+                <div style="text-align:center;">
+                    <span class="camera-modal-title">Live Camera</span>
+                    <small id="camera-device-label" style="display:block; font-size:10px; color:#888; margin-top:-2px;">Connecting...</small>
+                </div>
+                <button type="button" id="btn-modal-flip-camera" class="camera-icon-btn" title="Switch Camera">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M20 10c0-4.418-3.582-8-8-8s-8 3.582-8 8c0 2.21 .896 4.21 2.343 5.657L4 18h6v-6l-2.222 2.222A5.96 5.96 0 0 1 6 10c0-3.314 2.686-6 6-6s6 2.686 6 6c0 1.657-.672 3.157-1.757 4.243L14.83 15.66"></path>
                     </svg>
@@ -343,11 +346,20 @@
 
             <!-- Bottom Shutter Bar -->
             <div class="camera-modal-footer">
+                <button type="button" id="btn-modal-upload" class="camera-aux-btn" title="Upload from Device">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <span>Upload</span>
+                </button>
                 <button type="button" id="btn-modal-snap" class="camera-shutter-btn" title="Snap Photo">
                     <div class="shutter-btn-outer">
                         <div class="shutter-btn-inner"></div>
                     </div>
                 </button>
+                <div style="width: 80px;"></div>
             </div>
         </div>
     </div>

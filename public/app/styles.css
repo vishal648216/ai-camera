@@ -1189,12 +1189,35 @@ body {
     left: 0;
     right: 0;
     height: 110px;
-    padding-bottom: 20px;
+    padding: 0 20px 20px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 100%);
     z-index: 10;
+}
+
+.camera-aux-btn {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    border-radius: var(--radius-pill);
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 80px;
+    justify-content: center;
+}
+
+.camera-aux-btn:hover {
+    background: rgba(0, 242, 254, 0.2);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
 }
 
 .camera-shutter-btn {

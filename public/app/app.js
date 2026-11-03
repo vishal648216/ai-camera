@@ -261,6 +261,14 @@
             elements.clientInfoPill.addEventListener('click', handleClientLogout);
         }
 
+        const btnModalUpload = document.getElementById('btn-modal-upload');
+        if (btnModalUpload) {
+            btnModalUpload.addEventListener('click', () => {
+                closeCameraModal();
+                elements.fileInputCamera.click();
+            });
+        }
+
         if (elements.btnReloginHere) {
             elements.btnReloginHere.addEventListener('click', () => {
                 if (elements.modalKickedOut) elements.modalKickedOut.classList.add('hidden');
@@ -527,6 +535,19 @@
     // =========================================================================
     // Fullscreen Camera Popup Modal Handling
     // =========================================================================
+    let availableVideoDevices = [];
+    let currentDeviceIndex = 0;
+
+    async function getVideoDevices() {
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return [];
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            return devices.filter(d => d.kind === 'videoinput');
+        } catch (e) {
+            return [];
+        }
+    }
+
     async function openCameraModal() {
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -535,36 +556,100 @@
             }
 
             elements.modalCamera.classList.remove('hidden');
+            const devLabel = document.getElementById('camera-device-label');
+            if (devLabel) devLabel.textContent = 'Connecting camera...';
+
+            stopCameraStream();
+            await new Promise(r => setTimeout(r, 120));
+
+            // Fetch actual hardware devices
+            availableVideoDevices = await getVideoDevices();
+            if (availableVideoDevices.length > 0 && currentDeviceIndex >= availableVideoDevices.length) {
+                currentDeviceIndex = 0;
+            }
 
             let stream = null;
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: state.cameraFacingMode },
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
-                    audio: false
+            const constraintsList = [];
+
+            // 1. If user switched to a specific deviceId
+            if (availableVideoDevices[currentDeviceIndex] && availableVideoDevices[currentDeviceIndex].deviceId) {
+                constraintsList.push({
+                    deviceId: { exact: availableVideoDevices[currentDeviceIndex].deviceId },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
                 });
-            } catch (e1) {
-                console.warn("Retrying with simple facingMode:", e1.message);
+            }
+
+            // 2. FacingMode ideal
+            constraintsList.push({
+                facingMode: state.cameraFacingMode ? { ideal: state.cameraFacingMode } : 'user',
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            });
+
+            // 3. FacingMode direct
+            constraintsList.push({
+                facingMode: state.cameraFacingMode || 'user'
+            });
+
+            // 4. Basic resolution (safest for Windows/Mac webcams)
+            constraintsList.push({
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            });
+
+            // 5. Ultimate fallback
+            constraintsList.push(true);
+
+            for (const vOpt of constraintsList) {
                 try {
                     stream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: state.cameraFacingMode },
+                        video: vOpt,
                         audio: false
                     });
-                } catch (e2) {
-                    console.warn("Retrying with basic video constraint:", e2.message);
-                    stream = await navigator.mediaDevices.getUserMedia({
-                        video: true,
-                        audio: false
-                    });
+                    if (stream && stream.getVideoTracks().length > 0) {
+                        break;
+                    }
+                } catch (ce) {
+                    console.warn("[Camera] Constraint retry:", ce.message);
                 }
             }
 
+            if (!stream) {
+                throw new Error("No active camera stream could be established");
+            }
+
             state.cameraStream = stream;
-            elements.modalWebcamVideo.srcObject = stream;
-            await elements.modalWebcamVideo.play().catch(() => { });
+            const track = stream.getVideoTracks()[0];
+            if (track) {
+                track.enabled = true;
+                if (devLabel) {
+                    devLabel.textContent = track.label || (state.cameraFacingMode === 'user' ? 'Front Camera' : 'Back Camera');
+                }
+            }
+
+            const video = elements.modalWebcamVideo;
+            if (video) {
+                video.srcObject = null;
+                video.muted = true;
+                video.playsInline = true;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                video.setAttribute('autoplay', '');
+                video.srcObject = stream;
+
+                const tryPlay = async () => {
+                    try {
+                        await video.play();
+                    } catch (pe) {
+                        console.warn("[Camera] Play notice:", pe.message);
+                    }
+                };
+
+                video.onloadedmetadata = tryPlay;
+                video.oncanplay = tryPlay;
+                tryPlay();
+            }
 
         } catch (err) {
             console.warn("Camera modal stream notice:", err.message);
@@ -595,8 +680,14 @@
     }
 
     async function flipCamera() {
-        state.cameraFacingMode = state.cameraFacingMode === 'user' ? 'environment' : 'user';
+        availableVideoDevices = await getVideoDevices();
+        if (availableVideoDevices.length > 1) {
+            currentDeviceIndex = (currentDeviceIndex + 1) % availableVideoDevices.length;
+        } else {
+            state.cameraFacingMode = state.cameraFacingMode === 'user' ? 'environment' : 'user';
+        }
         stopCameraStream();
+        await new Promise(r => setTimeout(r, 200));
         await openCameraModal();
     }
 
