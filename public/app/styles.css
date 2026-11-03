@@ -147,13 +147,15 @@ body {
 
 /* App Header */
 .app-header {
-    height: 52px;
-    padding: 0 16px;
+    min-height: 56px;
+    height: 56px;
+    padding: 0 12px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(15, 12, 41, 0.75);
+    background: rgba(15, 12, 41, 0.85);
     backdrop-filter: blur(15px);
     position: sticky;
     top: 0;
@@ -164,7 +166,8 @@ body {
 .header-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
 .btn-compact-reset {
@@ -173,10 +176,12 @@ body {
     color: var(--accent-cyan);
     font-weight: 700;
     font-size: 11px;
-    padding: 3px 9px;
+    padding: 3px 8px;
     border-radius: var(--radius-pill);
     cursor: pointer;
     transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .btn-compact-reset:hover {
@@ -185,8 +190,8 @@ body {
 }
 
 .icon-btn {
-    width: 42px;
-    height: 42px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -196,6 +201,7 @@ body {
     justify-content: center;
     cursor: pointer;
     transition: all 0.25s ease;
+    flex-shrink: 0;
 }
 
 .icon-btn:hover {
@@ -206,43 +212,68 @@ body {
 .brand-title {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 3px;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
     flex: 1;
+    gap: 2px;
+    overflow: hidden;
 }
 
 .brand-badge {
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 800;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.2px;
     color: var(--accent-cyan);
-    text-shadow: 0 0 12px rgba(0, 242, 254, 0.5);
+    text-shadow: 0 0 10px rgba(0, 242, 254, 0.4);
+    white-space: nowrap;
+    line-height: 1.1;
+    text-transform: uppercase;
 }
 
 .header-text {
     font-family: var(--font-heading);
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+    max-width: 100%;
 }
 
 .header-status {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     background: rgba(16, 185, 129, 0.12);
     border: 1px solid rgba(16, 185, 129, 0.35);
-    padding: 5px 10px;
+    padding: 4px 8px;
     border-radius: var(--radius-pill);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--accent-green);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .header-status.offline {
     background: rgba(239, 68, 68, 0.12);
     border-color: rgba(239, 68, 68, 0.35);
     color: var(--accent-red);
+}
+
+@media (max-width: 420px) {
+    #server-status-text {
+        display: none;
+    }
+    .header-status {
+        padding: 4px 6px;
+    }
+    .client-name {
+        max-width: 60px;
+    }
 }
 
 .status-dot {
@@ -1370,20 +1401,21 @@ body {
 .client-pill {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     background: rgba(0, 242, 254, 0.12);
     border: 1px solid rgba(0, 242, 254, 0.35);
     border-radius: var(--radius-pill);
-    padding: 4px 10px;
-    font-size: 12px;
+    padding: 3px 8px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--accent-cyan);
     transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 .client-dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     background: #00ff88;
     border-radius: 50%;
     box-shadow: 0 0 8px #00ff88;
@@ -1391,7 +1423,7 @@ body {
 }
 
 .client-name {
-    max-width: 120px;
+    max-width: 80px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
