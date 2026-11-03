@@ -556,6 +556,10 @@
                         </select>
                     </div>
 
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetAllPhotoFilters()" title="Reset all filters to view all photos">
+                        <i class="fas fa-undo me-1"></i>Reset Filters
+                    </button>
+
                     <div class="btn-group ms-2" role="group">
                         <button type="button" class="btn btn-sm btn-outline-info active" id="btnViewGrid" onclick="setPhotosViewMode('grid')"><i class="fas fa-th-large me-1"></i>Gallery Grid</button>
                         <button type="button" class="btn btn-sm btn-outline-info" id="btnViewTable" onclick="setPhotosViewMode('table')"><i class="fas fa-list me-1"></i>Table</button>
@@ -605,16 +609,28 @@
                     <tr><td colspan="7" class="text-center text-secondary py-4">Loading leads...</td></tr>
                 </tbody>
             </table>
-        <!-- Photos Pagination Bar (Super-Smooth 24/20 per page) -->
+        </div>
+
+        <!-- Photos Pagination Bar (Always visible in both Grid & Table mode) -->
         <div class="glass-card p-3 mb-4 d-flex flex-wrap justify-content-between align-items-center gap-2" id="photosPaginationWrap">
             <div class="text-secondary small" id="photosPageSummary">Showing 0 of 0 photos</div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="d-flex align-items-center gap-1">
+                    <span class="text-secondary small">Per Page:</span>
+                    <select id="photosPageSizeSelect" class="form-select form-select-sm bg-dark text-white border-secondary py-0 px-2" style="width: auto; height: 30px;" onchange="changePhotosPageSize(this.value)">
+                        <option value="24" selected>24</option>
+                        <option value="48">48</option>
+                        <option value="96">96</option>
+                        <option value="200">200</option>
+                        <option value="1000">All Photos</option>
+                    </select>
+                </div>
                 <nav aria-label="Photos pagination">
                     <ul class="pagination pagination-sm mb-0" id="photosPagination"></ul>
                 </nav>
-                <div class="d-flex align-items-center gap-1 ms-2">
+                <div class="d-flex align-items-center gap-1">
                     <span class="text-secondary small">Go:</span>
-                    <input type="number" id="photosJumpInput" min="1" class="form-control form-control-sm bg-dark text-info border-secondary text-center px-1" style="width: 58px;" placeholder="Pg" onkeydown="if(event.key==='Enter') jumpToPhotosPage(this.value)">
+                    <input type="number" id="photosJumpInput" min="1" class="form-control form-control-sm bg-dark text-info border-secondary text-center px-1" style="width: 58px; height: 30px;" placeholder="Pg" onkeydown="if(event.key==='Enter') jumpToPhotosPage(this.value)">
                 </div>
             </div>
         </div>
@@ -2929,8 +2945,28 @@ function populateEventFilterDropdown() {
 
 // ===== PHOTOS PAGINATION & PERFORMANCE OPTIMIZATION =====
 let _photosCurrentPage = 1;
+let _customPhotosPageSize = 24;
 const PHOTOS_GRID_PAGE_SIZE = 24;
 const PHOTOS_TABLE_PAGE_SIZE = 20;
+
+function changePhotosPageSize(val) {
+    _customPhotosPageSize = parseInt(val, 10) || 24;
+    _photosCurrentPage = 1;
+    renderFilteredPhotos();
+}
+window.changePhotosPageSize = changePhotosPageSize;
+
+function resetAllPhotoFilters() {
+    _currentEventFilter = 'all';
+    _currentClientFilter = 'all';
+    const evSel = document.getElementById('filterEventSelect');
+    if (evSel) evSel.value = 'all';
+    const clSel = document.getElementById('filterClientSelect');
+    if (clSel) clSel.value = 'all';
+    _photosCurrentPage = 1;
+    renderFilteredPhotos();
+}
+window.resetAllPhotoFilters = resetAllPhotoFilters;
 
 function setPhotosViewMode(mode) {
     _photosViewMode = mode;
@@ -2964,7 +3000,7 @@ function onEventFilterChange() {
 
 function goToPhotosPage(page) {
     const filtered = getFilteredLeads();
-    const pageSize = (_photosViewMode === 'grid') ? PHOTOS_GRID_PAGE_SIZE : PHOTOS_TABLE_PAGE_SIZE;
+    const pageSize = _customPhotosPageSize || ((_photosViewMode === 'grid') ? PHOTOS_GRID_PAGE_SIZE : PHOTOS_TABLE_PAGE_SIZE);
     const totalPages = Math.ceil(filtered.length / pageSize) || 1;
     if (page < 1) page = 1;
     if (page > totalPages) page = totalPages;
@@ -3017,7 +3053,7 @@ function renderFilteredPhotos() {
     calculateBilling(filtered.length);
 
     // Determine page size and total pages based on current mode
-    const pageSize = (_photosViewMode === 'grid') ? PHOTOS_GRID_PAGE_SIZE : PHOTOS_TABLE_PAGE_SIZE;
+    const pageSize = _customPhotosPageSize || ((_photosViewMode === 'grid') ? PHOTOS_GRID_PAGE_SIZE : PHOTOS_TABLE_PAGE_SIZE);
     const totalItems = filtered.length;
     const totalPages = Math.ceil(totalItems / pageSize) || 1;
     if (_photosCurrentPage > totalPages) _photosCurrentPage = totalPages;
