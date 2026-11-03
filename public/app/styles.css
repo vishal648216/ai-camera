@@ -1553,11 +1553,14 @@ body {
     align-items: center;
 }
 
-.input-with-icon svg {
+.input-with-icon > svg {
     position: absolute;
     left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
     stroke: var(--text-muted);
     pointer-events: none;
+    z-index: 2;
 }
 
 .input-with-icon input {
@@ -1567,7 +1570,7 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: var(--radius-sm);
     color: #FFFFFF;
-    padding: 0 44px;
+    padding: 0 46px 0 44px;
     font-size: 15px;
     outline: none;
     transition: all 0.2s ease;
@@ -1581,19 +1584,36 @@ body {
 
 .btn-pwd-eye {
     position: absolute;
-    right: 12px;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
     background: none;
     border: none;
     color: var(--text-muted);
     cursor: pointer;
-    padding: 6px;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    z-index: 3;
 }
 
 .btn-pwd-eye:hover {
-    color: #FFFFFF;
+    color: var(--accent-cyan);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-pwd-eye svg {
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    pointer-events: auto;
+    stroke: currentColor;
 }
 
 .login-terms-info {
