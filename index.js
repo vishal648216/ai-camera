@@ -23,6 +23,12 @@ try {
     console.warn("Custom DNS set notice:", dnsErr.message);
 }
 
+// Optimize Sharp internal memory and concurrency for high-traffic photobooth operations
+try {
+    sharp.cache({ files: 50, memory: 128 });
+    sharp.concurrency(Math.min(4, os.cpus().length || 2));
+} catch (sharpCfgErr) {}
+
 const isVercel = process.env.VERCEL || process.env.NOW_REGION;
 
 const getUploadDir = (subDir) => {
@@ -196,6 +202,8 @@ const Template = mongoose.model('Template', templateSchema);
 const registrationSchema = new mongoose.Schema({ id: String, token: String, eventId: String, name: String, email: String, phone: String, gender: String, company: String, personaDescription: String, usedProvider: String, selfieUrl: String, resultUrl: String, resultData: String, timestamp: String }, { strict: false });
 registrationSchema.index({ _id: -1 });
 registrationSchema.index({ eventId: 1, _id: -1 });
+registrationSchema.index({ clientId: 1, _id: -1 });
+registrationSchema.index({ clientUsername: 1, _id: -1 });
 registrationSchema.index({ timestamp: -1 });
 const Registration = mongoose.model('Registration', registrationSchema);
 
