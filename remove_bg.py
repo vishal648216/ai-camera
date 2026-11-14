@@ -1,6 +1,7 @@
 import sys
 import io
 import os
+import cv2
 import numpy as np
 from rembg import remove, new_session
 from PIL import Image, ImageFilter
@@ -15,13 +16,12 @@ def process_image(input_path, output_path):
         # Downscale huge mobile camera images to max 1280px for crisp detail & fast inference
         img.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
         
-        # Robust model hierarchy:
-        # 'u2net' is the general salient segmentation neural network trained to segment ALL foreground
-        # subjects (single person, multiple people, groups of 5-10 people, props, clothing).
-        # CRITICAL: post_process_mask=False ensures secondary people, people sitting down,
-        # or separate bodies in group photos are NEVER discarded or suppressed!
+        # CRITICAL MODEL HIERARCHY:
+        # 1. 'u2net_human_seg' is trained specifically for Human Body & Person segmentation!
+        #    It strictly ignores background posters, paintings, wall decor, picture frames, and tea/drink cups!
+        # 2. 'u2netp' / 'u2net' serve as robust fallbacks if human_seg model isn't available.
         out_img = None
-        for model_name in ['u2net', 'u2net_human_seg', 'u2netp']:
+        for model_name in ['u2net_human_seg', 'u2netp', 'u2net']:
             try:
                 session = new_session(model_name)
                 out_img = remove(img, session=session, post_process_mask=False)
@@ -32,7 +32,6 @@ def process_image(input_path, output_path):
                 continue
         
         if out_img is None:
-            # Safe final fallback
             out_img = remove(img, post_process_mask=False)
         
         # Ensure RGBA
@@ -40,14 +39,49 @@ def process_image(input_path, output_path):
             out_img = out_img.convert('RGBA')
             
         r, g, b, a = out_img.split()
-        a_np = np.array(a, dtype=np.float32)
+        a_np = np.array(a, dtype=np.uint8)
+        img_h, img_w = a_np.shape[:2]
+        
+        # ANTI-BACKGROUND-ARTIFACT & WALL POSTER SUPPRESSION:
+        # Detect connected foreground components. Real human subjects in photo booths
+        # always touch or extend into the lower 40% of the frame (legs, torso, waist).
+        # Background artifacts (wall posters, pictures, lamps, signs) float in the upper/mid
+        # background completely disconnected from the human body.
+        try:
+            _, thresh = cv2.threshold(a_np, 35, 255, cv2.THRESH_BINARY)
+            num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(thresh)
+            
+            if num_labels > 2: # More than background + 1 component
+                # Find maximum area component (primary human subject)
+                max_area = max(stats[i][cv2.CC_STAT_AREA] for i in range(1, num_labels))
+                
+                for i in range(1, num_labels):
+                    comp_top = stats[i][cv2.CC_STAT_TOP]
+                    comp_h = stats[i][cv2.CC_STAT_HEIGHT]
+                    comp_bottom = comp_top + comp_h
+                    comp_area = stats[i][cv2.CC_STAT_AREA]
+                    
+                    # Human subjects extend towards the lower part of the camera frame
+                    touches_lower = comp_bottom > (img_h * 0.60)
+                    is_major_subject = comp_area > (max_area * 0.25)
+                    
+                    # If an isolated component floats in the upper/mid frame without touching
+                    # the lower body region and is much smaller than the human subject:
+                    # It is an unwanted background poster, frame, light, or wall decor!
+                    if not touches_lower and not is_major_subject:
+                        # Erase this background artifact completely!
+                        a_np[labels == i] = 0
+        except Exception as cvErr:
+            print(f"Notice component filter: {cvErr}", file=sys.stderr)
+            
+        a_float = a_np.astype(np.float32)
         
         # CRITICAL MULTI-PERSON GHOSTING / TRANSPARENCY FIX:
         # In group photos, subjects on sides or behind often get soft alpha (40-180),
         # making them look like transparent ghosts through which the backdrop bleeds!
         # Solidify subject interior: any alpha >= 45 is ramped solidly to 255 (100% opaque).
         # Soft edges (0 to 45) get a smooth anti-aliased feathering curve.
-        a_solid = np.where(a_np >= 45.0, 255.0, a_np * (255.0 / 45.0))
+        a_solid = np.where(a_float >= 45.0, 255.0, a_float * (255.0 / 45.0))
         a_solid = np.clip(a_solid, 0, 255).astype(np.uint8)
         
         # Subtle Gaussian blur (0.6px) on alpha channel for clean, cinematic, anti-aliased edge blending

@@ -16,11 +16,12 @@ const mongoose = require('mongoose');
 const dns = require('dns');
 require('dotenv').config();
 
-// Ensure DNS SRV resolution for MongoDB Atlas works seamlessly across Windows networks & ISPs
+// DNS configuration for MongoDB Atlas: only use custom servers if system lookup fails
+// (Prevents ETIMEOUT when ISPs/routers block external DNS on port 53)
 try {
-    dns.setServers(['8.8.8.8', '1.1.1.1']);
+    // Keep system default DNS as primary
 } catch (dnsErr) {
-    console.warn("Custom DNS set notice:", dnsErr.message);
+    console.warn("DNS setup notice:", dnsErr.message);
 }
 
 // Optimize Sharp internal memory and concurrency for high-traffic photobooth operations
@@ -1001,21 +1002,30 @@ async function connectDB() {
     }
 
     const atlasUri = 'mongodb+srv://aipersona:aipersona@cluster0.g4wl0mi.mongodb.net/aipersona?retryWrites=true&w=majority&appName=Cluster0';
+    const directReplicaUri = 'mongodb://aipersona:aipersona@ac-bmanpnr-shard-00-00.g4wl0mi.mongodb.net:27017,ac-bmanpnr-shard-00-01.g4wl0mi.mongodb.net:27017,ac-bmanpnr-shard-00-02.g4wl0mi.mongodb.net:27017/aipersona?ssl=true&replicaSet=atlas-bmanpnr-shard-0&authSource=admin&retryWrites=true&w=majority';
     const mongoUri = process.env.MONGODB_URI || atlasUri;
     try {
-        await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000, bufferCommands: false });
+        await mongoose.connect(mongoUri, { 
+            serverSelectionTimeoutMS: 8000, 
+            connectTimeoutMS: 8000,
+            socketTimeoutMS: 30000,
+            bufferCommands: false
+        });
         console.log('MongoDB connected successfully via primary URI');
         await initializeDB();
     } catch (err) {
         console.warn('Primary MONGODB_URI notice:', err.message);
-        if (atlasUri !== mongoUri) {
-            try {
-                await mongoose.connect(atlasUri, { serverSelectionTimeoutMS: 5000, bufferCommands: false });
-                console.log('MongoDB Atlas connected via direct fallback URI!');
-                await initializeDB();
-            } catch (atlasErr) {
-                console.warn('MongoDB Atlas notice:', atlasErr.message);
-            }
+        try {
+            await mongoose.connect(directReplicaUri, { 
+                serverSelectionTimeoutMS: 8000, 
+                connectTimeoutMS: 8000,
+                socketTimeoutMS: 30000,
+                bufferCommands: false
+            });
+            console.log('MongoDB Atlas connected via direct replicaSet URI!');
+            await initializeDB();
+        } catch (directErr) {
+            console.warn('Direct replicaSet connection notice:', directErr.message);
         }
     }
 }
